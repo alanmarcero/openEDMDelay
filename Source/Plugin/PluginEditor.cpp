@@ -95,6 +95,7 @@ void DelayEditor::makeControl(int i) {
         addAndMakeVisible(*c);sliders.push_back(std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(owner.parameters,spec.id,*c));
         c->textFromValueFunction=[i,step,pan,unit=spec.unit](double v){if(step)return juce::String(static_cast<int>(v));if(pan)return std::abs(v)<.01?juce::String("C"):juce::String(static_cast<int>(std::round(std::abs(v))))+(v<0?" L":" R");if(i==highPass||i==lowPass)return v>=1000?juce::String(v/1000,2)+" kHz":juce::String(static_cast<int>(std::round(v)))+" Hz";return (i==output?juce::String(std::abs(v)<.005?0:v,1):juce::String(static_cast<int>(std::round(v))))+(unit=="%"?"%":" "+unit);};
         c->valueFromTextFunction=[i](const juce::String& t){const double value=t.getDoubleValue();return (i==highPass||i==lowPass)&&t.containsIgnoreCase("k")?value*1000:value;};
+        c->updateText();
         c->setTooltip(spec.name+". Drag to adjust; double-click to reset. Host automatable.");controls[static_cast<std::size_t>(i)]=std::move(c);
     }
     auto* tooltipClient=dynamic_cast<juce::SettableTooltipClient*>(controls[static_cast<std::size_t>(i)].get());

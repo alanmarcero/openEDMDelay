@@ -1,7 +1,8 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
 #include <cmath>
-#include <charconv>
+#include <sstream>
+#include <locale>
 namespace oed {
 DelayProcessor::DelayProcessor():AudioProcessor(BusesProperties().withInput("Input",juce::AudioChannelSet::stereo(),true).withOutput("Output",juce::AudioChannelSet::stereo(),true)),parameters(*this,nullptr,"openEDMDelay",makeLayout()) {
     for(std::size_t i=0;i<values.size();++i)values[i]=parameters.getRawParameterValue(parameterSpecs()[i].id);
@@ -90,8 +91,8 @@ void DelayProcessor::setStateInformation(const void* data,int size) {
             for(const auto& child:state)if(child.getProperty("id").toString()==spec.id) {
                 ++matches;
                 const auto value=child.getProperty("value").toString().trim().toStdString();double number=0;
-                const auto parsed=std::from_chars(value.data(),value.data()+value.size(),number);
-                if(parsed.ec!=std::errc{}||parsed.ptr!=value.data()+value.size()||!std::isfinite(number)||number<spec.min||number>spec.max)return;
+                std::istringstream parser(value);parser.imbue(std::locale::classic());parser>>std::noskipws>>number;
+                if(!parser||!parser.eof()||!std::isfinite(number)||number<spec.min||number>spec.max)return;
                 if((spec.choices.isNotEmpty()||spec.id.endsWith("Step"))&&std::abs(number-std::round(number))>1.e-6)return;
             }
             if(matches!=1)return;
