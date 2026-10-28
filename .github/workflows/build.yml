@@ -1,0 +1,101 @@
+name: build
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+permissions:
+  contents: read
+jobs:
+  native:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-14
+            name: macOS-universal
+          - os: windows-latest
+            name: Windows-x64
+          - os: ubuntu-24.04
+            name: Linux-x64
+    runs-on: ${{ matrix.os }}
+    env:
+      ARTEFACTS: build/openEDMDelay_artefacts/Release
+    steps:
+      - uses: actions/checkout@v4
+      - name: Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libasound2-dev libjack-jackd2-dev libfreetype-dev libfontconfig1-dev libx11-dev libxcomposite-dev libxcursor-dev libxext-dev libxinerama-dev libxrandr-dev libxrender-dev libglu1-mesa-dev mesa-common-dev xvfb
+      - name: Configure macOS
+        if: runner.os == 'macOS'
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0
+      - name: Configure Windows
+        if: runner.os == 'Windows'
+        run: cmake -B build -A x64
+      - name: Configure Linux
+        if: runner.os == 'Linux'
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release
+      - name: Build
+        run: cmake --build build --config Release --parallel 4
+      - name: Native tests
+        if: runner.os != 'Linux'
+        run: ctest --test-dir build -C Release --output-on-failure
+      - name: Native tests with display
+        if: runner.os == 'Linux'
+        run: xvfb-run -a ctest --test-dir build --output-on-failure
+      - name: Sign macOS bundles
+        if: runner.os == 'macOS'
+        run: |
+          codesign --force --deep --sign - "$ARTEFACTS/VST3/openEDMDelay.vst3"
+          codesign --force --deep --sign - "$ARTEFACTS/AU/openEDMDelay.component"
+          codesign --force --deep --sign - "$ARTEFACTS/Standalone/openEDMDelay.app"
+      - name: Validate macOS VST3
+        if: runner.os == 'macOS'
+        run: |
+          curl --fail --location --silent --show-error -o pluginval.zip https://github.com/Tracktion/pluginval/releases/download/v1.0.4/pluginval_macOS.zip
+          unzip -q pluginval.zip
+          ./pluginval.app/Contents/MacOS/pluginval --strictness-level 5 --validate "$ARTEFACTS/VST3/openEDMDelay.vst3"
+      - name: Validate Windows VST3
+        if: runner.os == 'Windows'
+        run: |
+          Invoke-WebRequest -Uri https://github.com/Tracktion/pluginval/releases/download/v1.0.4/pluginval_Windows.zip -OutFile pluginval.zip
+          Expand-Archive pluginval.zip -DestinationPath pluginval
+          ./pluginval/pluginval.exe --strictness-level 5 --validate "$env:ARTEFACTS/VST3/openEDMDelay.vst3"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Package
+        shell: bash
+        run: |
+          python3 scripts/package.py "${{ matrix.name }}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: openEDMDelay-${{ matrix.name }}
+          path: dist/*.zip
+  sanitizers:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: cmake -B build -DOED_BUILD_PLUGIN=OFF -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer" -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=address,undefined"
+      - run: cmake --build build --parallel 4 && ctest --test-dir build --output-on-failure
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [native, sanitizers]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Checksums
+        run: cd dist && sha256sum *.zip > SHA256SUMS.txt
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true
