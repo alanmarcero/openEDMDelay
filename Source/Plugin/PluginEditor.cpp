@@ -138,7 +138,6 @@ void DelayEditor::paint(juce::Graphics& g) {
     g.setGradientFill(juce::ColourGradient(theme::kAccentA.withAlpha(.12f),0,0,theme::kAccentB.withAlpha(.03f),1200,890,false));g.fillAll();
     g.setColour(theme::kAccentA.withAlpha(.75f));g.fillRect(20,0,290,2);g.setColour(theme::kAccentB.withAlpha(.6f));g.fillRect(880,0,300,2);
     text(g,"openEDM",{26,20,163,37},29,theme::kText,true);text(g,"Delay",{151,20,124,37},29,theme::kAccentA,true);
-    text(g,"RHYTHM IN REPEAT",{28,61,270,17},10.5f,theme::kTextDim);
     const bool synced=owner.hostSync.load();
     g.setColour(synced?theme::kAccentA:theme::kAccentB);g.fillEllipse(595,36,6,6);
     text(g,juce::String(owner.displayedBpm.load(),1)+" BPM  /  "+(synced?"HOST":"INTERNAL"),{612,26,222,29},12.5f,theme::kTextDim);
@@ -156,7 +155,7 @@ void DelayEditor::paint(juce::Graphics& g) {
     text(g,"STEP LENGTH",{177,642,106,22},10,theme::kTextDim);
     panel(g,{315,596,280,250},"ECHO FILTERS",theme::kAccentB);
     text(g,"IN THE FEEDBACK LOOP",{335,634,236,17},10,theme::kTextDim);
-    panel(g,{610,596,280,250},"DUCK & DISRUPT",theme::kAccentFx);
+    panel(g,{610,596,280,250},"DUCK & GLITCH",theme::kAccentFx);
     panel(g,{905,596,275,250},"OUTPUT",theme::kAccentOut);
     const float peak=juce::jlimit(0.f,1.f,owner.outputPeak.load());
     g.setColour(theme::kTrack);g.fillRoundedRectangle(925,648,235,5,2);
