@@ -71,6 +71,30 @@ DelayEditor::DelayEditor(DelayProcessor& p):AudioProcessorEditor(p),owner(p),gri
     for(int i=0;i<p.getNumPrograms();++i)preset.addItem(p.getProgramName(i),i+1);
     preset.setSelectedId(p.getCurrentProgram()+1,juce::dontSendNotification);
     preset.onChange=[this]{owner.setCurrentProgram(preset.getSelectedId()-1);pattern.setSelectedId(0,juce::dontSendNotification);};
+    prevPreset.setComponentID("prevPreset");
+    prevPreset.setTooltip("Previous preset");
+    prevPreset.onClick=[this]{
+        const int num=owner.getNumPrograms();
+        if(num<=0)return;
+        const int cur=owner.getCurrentProgram();
+        const int nextProg=(cur<=0?num:cur)-1;
+        owner.setCurrentProgram(nextProg);
+        pattern.setSelectedId(0,juce::dontSendNotification);
+        preset.setSelectedId(nextProg+1,juce::dontSendNotification);
+    };
+    addAndMakeVisible(prevPreset);
+    nextPreset.setComponentID("nextPreset");
+    nextPreset.setTooltip("Next preset");
+    nextPreset.onClick=[this]{
+        const int num=owner.getNumPrograms();
+        if(num<=0)return;
+        const int cur=owner.getCurrentProgram();
+        const int nextProg=(cur+1)%num;
+        owner.setCurrentProgram(nextProg);
+        pattern.setSelectedId(0,juce::dontSendNotification);
+        preset.setSelectedId(nextProg+1,juce::dontSendNotification);
+    };
+    addAndMakeVisible(nextPreset);
     pattern.addItemList(patternNames(),1);pattern.setTextWhenNothingSelected("Pattern / Custom");pattern.setTooltip("Load tap positions, levels and stereo pans. Grid rate and effects are preserved.");
     pattern.onChange=[this]{owner.applyPattern(pattern.getSelectedId()-1);};
     setSize(1200,890);startTimerHz(24);
@@ -116,7 +140,7 @@ void DelayEditor::place(int id,juce::Rectangle<int> r,bool showLabel) {
     controls[static_cast<std::size_t>(id)]->setBounds(r);auto& label=*labels[static_cast<std::size_t>(id)];label.setVisible(showLabel);label.setBounds(r.getX()-6,r.getBottom()+1,r.getWidth()+12,19);
 }
 void DelayEditor::resized() {
-    preset.setBounds(850,26,230,35);place(bypass,{1093,26,86,35},false);pattern.setBounds(645,109,195,29);grid.setBounds(39,149,801,220);
+    prevPreset.setBounds(850,26,28,35);preset.setBounds(882,26,166,35);nextPreset.setBounds(1052,26,28,35);place(bypass,{1093,26,86,35},false);pattern.setBounds(645,109,195,29);grid.setBounds(39,149,801,220);
     place(routing,{896,267,132,28},false);place(character,{1040,267,124,28},false);
     place(drive,{901,321,119,25});place(motion,{1038,321,119,25});
     for(int i=0;i<tapCount;++i) {

@@ -34,6 +34,7 @@ private:
     std::vector<std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment>> combos;
     std::vector<std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment>> buttons;
     juce::ComboBox preset,pattern;
+    juce::TextButton prevPreset{"<"}, nextPreset{">"};
     juce::TooltipWindow tooltip{this,650};
     int shownProgram=-1;
 };
