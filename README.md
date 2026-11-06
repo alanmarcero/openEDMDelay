@@ -1,6 +1,6 @@
 # openEDMDelay
 
-An eight-tap, beat-synced delay for electronic music. Build rhythmic echoes, wide ping-pong patterns, worn tape trails and broken repeats with a native interface that fits the openEDM plugin family.
+An eight-tap, beat-synced delay. Routing is stereo, ping-pong, or mono. Characters are digital, tape, BBD, and lo-fi.
 
 ![openEDMDelay native plugin editor](docs/screenshots/openEDMDelay.png)
 
@@ -19,7 +19,7 @@ An eight-tap, beat-synced delay for electronic music. Build rhythmic echoes, wid
 - Wet-only Gate, Stutter and Reverse effects with their own beat rate and mix. Stutter and Reverse replay the preceding slice and need history to fill before producing sound.
 - Mix, stereo width, output gain, bypass, host automation and session recall. Mono and stereo buses; zero added dry-path latency.
 
-The host supplies BPM whenever it provides a valid tempo between 20 and 400. Without it, the clearly labeled Internal clock uses the Internal BPM control (120 by default). Beat effects follow host PPQ while playing and continue from an internal phase while stopped. The Standalone application uses the internal clock.
+The host supplies BPM whenever it provides a valid tempo between 20 and 400. Without it, the Internal clock uses the Internal BPM control (120 by default). Beat effects follow host PPQ while playing and continue from an internal phase while stopped. The Standalone application uses the internal clock.
 
 Drive applies to Tape and BBD; Motion applies to Tape. Tap pan applies to Stereo. Inactive controls are disabled. Double-click a knob to restore its default; click its value to type a setting. Use 100% Mix on an auxiliary return.
 
