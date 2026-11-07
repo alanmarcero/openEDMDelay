@@ -58,13 +58,20 @@ void DelayProcessor::applyPattern(int index) {
         setPlainValue(p+2,i==0?100.f:85.f-static_cast<float>(i)*5);setPlainValue(p+3,i%2?70.f:-70.f);
     }
 }
-int DelayProcessor::getNumPrograms(){return 12;}
+int DelayProcessor::getNumPrograms(){return 24;}
 const juce::String DelayProcessor::getProgramName(int index) {
-    static const juce::StringArray names{"01  /  Neon Orbit","02  /  Clean Quarter","03  /  Dotted Glass","04  /  Analog Afterglow","05  /  Pattern 3+5","06  /  Mono Dub","07  /  Trance Cascade","08  /  Broken Transmission","09  /  Reverse Bloom","10  /  Ducking Lead","11  /  Lo-fi Satellites","12  /  Tape Wash"};
-    return names[juce::jlimit(0,11,index)];
+    static const juce::StringArray names{
+        "01  /  Neon Orbit", "02  /  Clean Quarter", "03  /  Dotted Glass", "04  /  Analog Afterglow",
+        "05  /  Pattern 3+5", "06  /  Mono Dub", "07  /  Trance Cascade", "08  /  Broken Transmission",
+        "09  /  Reverse Bloom", "10  /  Ducking Lead", "11  /  Lo-fi Satellites", "12  /  Tape Wash",
+        "13  /  Festival Drop Lead", "14  /  Tech House Offbeat", "15  /  Dubstep Stutter Pulse", "16  /  Trance Euphoria 1/8d",
+        "17  /  Future Rave Laser", "18  /  Bass House Skank", "19  /  Drum & Bass Rapidfire", "20  /  Hardstyle Toxic Tail",
+        "21  /  Deep Melodic Echo", "22  /  Electro Glitch Cloud", "23  /  Trap Triplet Bounce", "24  /  Acid Slapback"
+    };
+    return names[juce::jlimit(0, 23, index)];
 }
 void DelayProcessor::setCurrentProgram(int index) {
-    index=juce::jlimit(0,11,index);program.store(index);
+    index=juce::jlimit(0,23,index);program.store(index);
     for(int i=0;i<parameterCount;++i)setPlainValue(i,parameterSpecs()[static_cast<std::size_t>(i)].initial);
     if(index==1){applyPattern(0);setPlainValue(gridRate,7);setPlainValue(routing,0);setPlainValue(character,0);setPlainValue(duck,0);}
     if(index==2){applyPattern(0);setPlainValue(gridRate,5);setPlainValue(character,0);setPlainValue(feedback,48);}
@@ -77,6 +84,18 @@ void DelayProcessor::setCurrentProgram(int index) {
     if(index==9){applyPattern(5);setPlainValue(duck,85);setPlainValue(duckMode,1);setPlainValue(feedback,45);}
     if(index==10){applyPattern(8);setPlainValue(character,3);setPlainValue(lowPass,4500);setPlainValue(glitch,1);setPlainValue(glitchAmount,40);}
     if(index==11){applyPattern(11);setPlainValue(feedback,72);setPlainValue(motion,65);setPlainValue(lowPass,3200);setPlainValue(decay,48);setPlainValue(mix,45);}
+    if(index==12){applyPattern(10);setPlainValue(gridRate,6);setPlainValue(feedback,52);setPlainValue(duck,65);setPlainValue(duckMode,1);}
+    if(index==13){applyPattern(0);setPlainValue(gridRate,4);setPlainValue(routing,0);setPlainValue(lowPass,3500);setPlainValue(feedback,40);}
+    if(index==14){applyPattern(8);setPlainValue(character,3);setPlainValue(glitch,2);setPlainValue(glitchAmount,75);setPlainValue(glitchRate,2);setPlainValue(feedback,60);}
+    if(index==15){applyPattern(10);setPlainValue(gridRate,5);setPlainValue(feedback,62);setPlainValue(motion,55);setPlainValue(lowPass,5500);setPlainValue(mix,42);}
+    if(index==16){applyPattern(11);setPlainValue(character,1);setPlainValue(glitch,3);setPlainValue(glitchAmount,85);setPlainValue(drive,45);}
+    if(index==17){applyPattern(6);setPlainValue(gridRate,4);setPlainValue(routing,1);setPlainValue(feedback,44);setPlainValue(duck,50);}
+    if(index==18){applyPattern(8);setPlainValue(gridRate,2);setPlainValue(character,2);setPlainValue(feedback,38);setPlainValue(lowPass,4800);setPlainValue(decay,30);}
+    if(index==19){applyPattern(1);setPlainValue(character,3);setPlainValue(drive,70);setPlainValue(feedback,65);setPlainValue(highPass,120);}
+    if(index==20){applyPattern(3);setPlainValue(gridRate,7);setPlainValue(feedback,68);setPlainValue(decay,50);setPlainValue(motion,45);setPlainValue(lowPass,3800);}
+    if(index==21){applyPattern(9);setPlainValue(glitch,1);setPlainValue(glitchAmount,60);setPlainValue(glitchRate,3);setPlainValue(feedback,55);}
+    if(index==22){applyPattern(7);setPlainValue(gridRate,3);setPlainValue(routing,2);setPlainValue(feedback,46);setPlainValue(duck,40);}
+    if(index==23){applyPattern(0);setPlainValue(gridRate,1);setPlainValue(routing,0);setPlainValue(feedback,20);setPlainValue(drive,35);setPlainValue(mix,30);}
     resetPending.store(true);
 }
 void DelayProcessor::getStateInformation(juce::MemoryBlock& block) {
@@ -97,7 +116,7 @@ void DelayProcessor::setStateInformation(const void* data,int size) {
             }
             if(matches!=1)return;
         }
-        parameters.replaceState(state);program.store(juce::jlimit(0,11,static_cast<int>(state.getProperty("program",0))));resetPending.store(true);
+        parameters.replaceState(state);program.store(juce::jlimit(0,23,static_cast<int>(state.getProperty("program",0))));resetPending.store(true);
     }
 }
 }
