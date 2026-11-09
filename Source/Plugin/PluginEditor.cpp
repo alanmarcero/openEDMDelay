@@ -180,6 +180,13 @@ void DelayEditor::paint(juce::Graphics& g) {
     panel(g,{315,596,280,250},"ECHO FILTERS",theme::kAccentB);
     text(g,"IN THE FEEDBACK LOOP",{335,634,236,17},10,theme::kTextDim);
     panel(g,{610,596,280,250},"DUCK & GLITCH",theme::kAccentFx);
+    const float duckAtten = juce::jlimit(0.f, 1.f, 1.f - owner.duckMeter.load());
+    g.setColour(theme::kTrack);
+    g.fillRoundedRectangle(628, 626, 120, 4, 2);
+    if (duckAtten > 0.01f) {
+        g.setColour(theme::kAccentFx);
+        g.fillRoundedRectangle(628, 626, 120.f * duckAtten, 4, 2);
+    }
     panel(g,{905,596,275,250},"OUTPUT",theme::kAccentOut);
     const float peak=juce::jlimit(0.f,1.f,owner.outputPeak.load());
     g.setColour(theme::kTrack);g.fillRoundedRectangle(925,648,235,5,2);

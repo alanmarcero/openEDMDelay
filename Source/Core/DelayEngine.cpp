@@ -138,8 +138,15 @@ void DelayEngine::process(float* left,float* right,int frames,const Settings& s,
                 if(s.character==Character::loFi) {
                     if(updateHold)held[ch]=std::round(v*256.f)/256.f;
                     v=held[ch];
-                } else v=std::tanh(v*(1+drive*4))/(1+drive*1.5f);
+                } else {
+                    const float satDrive = 1.0f + drive * 4.0f;
+                    const float asym = (s.character == Character::tape) ? 0.08f * v * std::abs(v) : 0.0f;
+                    v = std::tanh((v + asym) * satDrive) / (1.0f + drive * 1.5f);
+                }
                 tone[ch]+=toneCoefficient*(v-tone[ch]);v=tone[ch];
+            } else if (std::abs(v) > 1.0f) {
+                const float sgn = v > 0.f ? 1.f : -1.f;
+                v = sgn * (1.0f + std::tanh(std::abs(v) - 1.0f));
             }
             v=lp[ch].tick(hp[ch].tick(v));
             // Bound the feedback storage without clipping the dry branch.
