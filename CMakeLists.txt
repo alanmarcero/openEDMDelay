@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.22)
-project(openEDMDelay VERSION 0.4.0 LANGUAGES C CXX)
+project(openEDMDelay VERSION 0.4.1 LANGUAGES C CXX)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
@@ -28,6 +28,7 @@ if(OED_BUILD_PLUGIN)
         list(APPEND OED_FORMATS AU)
     endif()
     juce_add_plugin(openEDMDelay
+        VERSION "${PROJECT_VERSION}"
         COMPANY_NAME "Alan Marcero"
         COMPANY_WEBSITE "https://github.com/alanmarcero/openEDMDelay"
         COPYRIGHT "Copyright (c) 2026 Alan Marcero"
