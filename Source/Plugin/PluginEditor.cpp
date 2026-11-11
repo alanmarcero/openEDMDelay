@@ -195,7 +195,7 @@ void DelayEditor::paint(juce::Graphics& g) {
     const float reduction=1-owner.duckMeter.load();
     text(g,"Duck "+juce::String(static_cast<int>(std::round(reduction*100)))+"%",{628,854,150,20},10,theme::kAccentFx);
     text(g,"BEAT SYNC ONLY   /   T = triplet   /   D = dotted",{25,854,470,20},10,theme::kTextDim);
-    text(g,"ALAN MARCERO  /  openEDM",{910,854,267,20},10,theme::kTextDim,false,juce::Justification::centredRight);
+    text(g,"ALAN MARCERO  /  openEDM  /  v" JucePlugin_VersionString,{880,854,297,20},10,theme::kTextDim,false,juce::Justification::centredRight);
 }
 void DelayEditor::timerCallback() {
     const int current=owner.getCurrentProgram();if(current!=shownProgram){shownProgram=current;preset.setSelectedId(current+1,juce::dontSendNotification);}
