@@ -26,6 +26,19 @@ void timing() {
         check(x.l[0]==0,"Wet-only leaks dry");
     }
 }
+void extendedGridTiming() {
+    check(beatRates.size()==16,"EDM grid does not expose all 16 host-synced divisions");
+    for(std::size_t index=0;index<beatRates.size();++index) {
+        constexpr double sr=8000,bpm=120;
+        const double exact=sr*60/bpm*beatRates[index];
+        Render x(sr,static_cast<int>(std::ceil(exact))+8);auto s=clean();s.rate=static_cast<int>(index);x.l[0]=1;x.run(s,bpm);
+        double sum=0,centre=0;
+        for(int j=std::max(1,static_cast<int>(std::floor(exact))-2);j<=static_cast<int>(std::ceil(exact))+2;++j) {
+            const auto sample=x.l[static_cast<std::size_t>(j)];sum+=sample;centre+=j*sample;
+        }
+        check(std::abs(sum-1)<.0001 && std::abs(centre/sum-exact)<.001,"Extended grid division misses its host-synced beat position");
+    }
+}
 void routing() {
     auto s=clean();s.feedback=.5f;s.routing=Routing::pingPong;
     Render x;x.l[0]=1;x.r[0]=1;x.run(s);
@@ -95,7 +108,7 @@ void filterAutomation() {
 }
 int main() {
     int failed=0;
-    const std::pair<const char*,void(*)()> cases[]={{"fast timing automation",fastTimeAutomation},{"stutter seams",stutterEdges},{"filter automation",filterAutomation},{"beat timing",timing},{"routing",routing},{"taps",taps},{"dry/reset",dryAndReset},{"filters",filters},{"effects",effects},{"stability/block size",stable}};
+    const std::pair<const char*,void(*)()> cases[]={{"fast timing automation",fastTimeAutomation},{"stutter seams",stutterEdges},{"filter automation",filterAutomation},{"extended host-synced grid",extendedGridTiming},{"beat timing",timing},{"routing",routing},{"taps",taps},{"dry/reset",dryAndReset},{"filters",filters},{"effects",effects},{"stability/block size",stable}};
     for(const auto& [name,test]:cases)try{test();std::cout<<"PASS "<<name<<'\n';}catch(const std::exception& e){++failed;std::cerr<<"FAIL "<<name<<": "<<e.what()<<'\n';}
     return failed?1:0;
 }

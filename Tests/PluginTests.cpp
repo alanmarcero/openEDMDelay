@@ -1,4 +1,6 @@
 #include "PluginProcessor.h"
+#include <algorithm>
+#include <array>
 #include <iostream>
 #include <stdexcept>
 using namespace oed;
@@ -38,10 +40,22 @@ void ui(const juce::File& destination){
     require(initialUnit,"Initial knob value is missing its unit");
     for(int i=0;i<parameterCount;++i){const auto& spec=parameterSpecs()[static_cast<std::size_t>(i)];auto* c=find(*e,spec.id);require(c!=nullptr,("Missing control: "+spec.id).toRawUTF8());if(auto* s=dynamic_cast<juce::Slider*>(c))s->setValue(spec.min+(spec.max-spec.min)*.6,juce::sendNotificationSync);else if(auto* box=dynamic_cast<juce::ComboBox*>(c))box->setSelectedId(box->getNumItems(),juce::sendNotificationSync);else if(auto* button=dynamic_cast<juce::Button*>(c))button->setToggleState(true,juce::sendNotificationSync);else require(false,"Unknown control");}
     require(p.values[mix]->load()==60,"Mix knob disconnected");require(p.values[baseCount+1]->load()==10,"Tap step disconnected");require(p.values[hpSlope]->load()==4,"Slope selector disconnected");
-    require(p.getNumPrograms()>=10,"Missing factory programs");
+    require(p.getNumPrograms()==36,"EDM factory bank must contain 36 programs");
+    require(rateNames().size()==16,"EDM grid must expose 16 host-synced divisions");
+    juce::AudioBuffer<float> b(2,256);b.clear();juce::MidiBuffer midi;
+    Host host;host.info.setBpm(128);host.info.setPpqPosition(1.35);host.info.setIsPlaying(true);p.setPlayHead(&host);
+    std::array<bool,16> usedDivisions{};
+    for(int index=0;index<p.getNumPrograms();++index) {
+        p.setCurrentProgram(index);p.processBlock(b,midi);
+        require(p.hostSync.load(),"A factory preset lost host sync");
+        require(p.values[gridRate]->load()>=0&&p.values[gridRate]->load()<rateNames().size(),"Preset uses an invalid grid division");
+        usedDivisions[static_cast<std::size_t>(p.values[gridRate]->load())]=true;
+        bool activeTap=false;for(int i=0;i<tapCount;++i)activeTap=activeTap||p.values[static_cast<std::size_t>(baseCount+i*4)]->load()>.5f;
+        require(activeTap,"EDM factory preset has no active taps");
+    }
+    require(std::all_of(usedDivisions.begin(),usedDivisions.end(),[](bool used){return used;}),"Factory bank does not use every synchronized grid division");
     require(destination.createDirectory().wasOk(),"Screenshot directory failed");
     const auto save=[&](const juce::String& name){auto out=destination.getChildFile(name).createOutputStream();require(out!=nullptr,"Screenshot open failed");out->setPosition(0);out->truncate();require(juce::PNGImageFormat{}.writeImageToStream(e->createComponentSnapshot(e->getLocalBounds(),true,1.5f),*out),"Screenshot failed");};
-    Host host;host.info.setBpm(128);host.info.setPpqPosition(1.35);host.info.setIsPlaying(true);p.setPlayHead(&host);juce::AudioBuffer<float> b(2,256);b.clear();juce::MidiBuffer midi;
     p.setCurrentProgram(0);p.processBlock(b,midi);juce::MessageManager::getInstance()->runDispatchLoopUntil(60);save("openEDMDelay.png");
     p.setCurrentProgram(7);p.processBlock(b,midi);juce::MessageManager::getInstance()->runDispatchLoopUntil(60);save("openEDMDelay-glitch.png");p.setPlayHead(nullptr);
 }

@@ -1,11 +1,11 @@
 #include "Parameters.h"
 namespace oed {
-const juce::StringArray& rateNames() {static const juce::StringArray names{"1/32","1/16 T","1/16","1/8 T","1/8","1/8 D","1/4 T","1/4","1/4 D","1/2"};return names;}
+const juce::StringArray& rateNames() {static const juce::StringArray names{"1/32","1/16 T","1/16","1/8 T","1/8","1/8 D","1/4 T","1/4","1/4 D","1/2","1/32 D","1/16 D","1/2 T","1/2 D","1/1","1/1 D"};return names;}
 const std::array<ParameterSpec,parameterCount>& parameterSpecs() {
     static const auto specs=[] {
         const juce::String rates=rateNames().joinIntoString("|");
         std::array<ParameterSpec,parameterCount> a{{
-            {"rate","Grid",0,9,2,1,rates,""},
+            {"rate","Grid",0,15,2,1,rates,""},
             {"routing","Routing",0,2,1,1,"Stereo|Ping Pong|Mono",""},
             {"character","Character",0,3,1,1,"Digital|Tape|BBD|Lo-fi",""},
             {"feedback","Feedback",0,97,38,1,"","%"},
@@ -18,9 +18,9 @@ const std::array<ParameterSpec,parameterCount>& parameterSpecs() {
             {"motion","Motion",0,100,18,1,"","%"},
             {"duck","Duck",0,100,25,1,"","%"},
             {"duckMode","Duck source",0,1,0,1,"Beat|Input",""},
-            {"duckRate","Duck rate",0,9,7,1,rates,""},
+            {"duckRate","Duck rate",0,15,7,1,rates,""},
             {"glitch","Glitch",0,3,0,1,"Off|Gate|Stutter|Reverse",""},
-            {"glitchRate","Glitch rate",0,9,2,1,rates,""},
+            {"glitchRate","Glitch rate",0,15,2,1,rates,""},
             {"glitchAmount","Glitch mix",0,100,45,1,"","%"},
             {"mix","Mix",0,100,32,1,"","%"},
             {"width","Width",0,100,100,1,"","%"},
