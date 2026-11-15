@@ -7,7 +7,7 @@ namespace {
 constexpr double pi=std::numbers::pi;
 float finite(float x) {return std::isfinite(x)?x:0.f;}
 float clamp(float x,float lo,float hi) {return std::clamp(finite(x),lo,hi);}
-double rate(int i) {return beatRates[static_cast<std::size_t>(std::clamp(i,0,9))];}
+double rate(int i) {return beatRates[static_cast<std::size_t>(std::clamp(i,0,static_cast<int>(beatRates.size())-1))];}
 double fraction(double x) {return x-std::floor(x);}
 }
 void DelayEngine::Filter::clear() {stages={};oldStages={};primed=false;fade=0;}
@@ -47,7 +47,7 @@ float DelayEngine::Filter::tick(float x) {
 }
 void DelayEngine::prepare(double sr) {
     sampleRate=std::isfinite(sr)&&sr>=8000?sr:48000;
-    // 16 steps * 2 beats * 60 / 20 BPM, plus interpolation/modulation margin.
+    // 16 steps * 6 beats * 60 / 20 BPM, plus interpolation/modulation margin.
     for(auto& buffer:ring)buffer.assign(static_cast<std::size_t>(sampleRate*96.1)+4,0);
     for(auto& buffer:wetHistory)buffer.assign(static_cast<std::size_t>(sampleRate*12.1)+4,0);
     reset();

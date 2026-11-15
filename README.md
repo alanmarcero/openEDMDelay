@@ -11,8 +11,8 @@ An eight-tap, beat-synced delay. Routing is stereo, ping-pong, or mono. Characte
 - Eight taps with individual enable, grid position, level and stereo pan. Drag the tap field horizontally to change time, vertically to change level, or right-click to mute.
 - Stereo, Ping Pong and Mono routing. Ping Pong alternates tap sides and crossfeeds successive phrase repeats; Stereo uses each tap's pan.
 - Digital, Tape, BBD and Lo-fi characters. Tape adds saturation, beat-related wow/flutter and pitch glide during timing changes. Other characters crossfade time changes over 25 ms.
-- Twelve rhythm templates, including paired 1+1, 2+1, 3+2, 3+4 and 3+5 patterns, plus eight-tap sequences. Twelve factory programs are also exposed to the host.
-- Straight, dotted and triplet grid lengths from 1/32 to 1/2 notes. Each tap can land on steps 1–16. There is no millisecond delay mode.
+- Twelve rhythm templates, including paired 1+1, 2+1, 3+2, 3+4 and 3+5 patterns, plus eight-tap sequences. Thirty-six EDM factory programs cover trance, techno, house, drum and bass, hardstyle, garage, and rave.
+- Sixteen straight, dotted and triplet grid divisions range from 1/32 to a dotted whole note (six beats). Each tap can land on steps 1–16, for phrases up to 96 beats. Delay, beat duck, and glitch grids use the host tempo when available. There is no millisecond delay mode.
 - Feedback repeats the entire phrase, using the last active tap as its length. Decay progressively reduces later tap levels. Tap levels are normalized to keep dense patterns manageable.
 - High-pass and low-pass filters in the feedback loop, each with Off, 6, 12, 24 or 48 dB/oct slopes. Echoes pass through the filters again on each phrase repeat.
 - Wet-only ducking from the beat or the input envelope. The Duck rate controls beat repetition or input-follower recovery.
@@ -65,7 +65,7 @@ CI builds all three platforms, runs DSP and native integration tests, validates 
 
 ## Design notes
 
-The core preallocates enough history for a 32-beat phrase at 20 BPM: approximately 42 MB at 48 kHz, scaling with sample rate. It allocates no buffers while processing. Continuous level controls are smoothed. Reset and bypass invalidate history so old echoes do not return. Feedback storage is bounded; the output gain can still produce peaks above 0 dBFS.
+The core preallocates enough delay history for a 96-beat phrase at 20 BPM: approximately 42 MB at 48 kHz, scaling with sample rate. It allocates no buffers while processing. Continuous level controls are smoothed. Reset and bypass invalidate history so old echoes do not return. Feedback storage is bounded; the output gain can still produce peaks above 0 dBFS.
 
 These are original algorithms inspired by the documented workflows of Vengeance Essential FX Delay, Waves SuperTap/H-Delay and Access Virus. They are not bit-accurate hardware emulations or compatible with Virus presets. [Research notes](docs/research.md) link the primary sources and explain the differences. The current version uses the main input for input ducking; it has no external sidechain bus.
 

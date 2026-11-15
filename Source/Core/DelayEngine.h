@@ -3,7 +3,10 @@
 #include <vector>
 namespace oed {
 constexpr int tapCount = 8;
-constexpr std::array<double, 10> beatRates{.125, 1.0/6, .25, 1.0/3, .5, .75, 2.0/3, 1, 1.5, 2};
+constexpr std::array<double, 16> beatRates{
+    .125, 1.0/6, .25, 1.0/3, .5, .75, 2.0/3, 1, 1.5, 2,
+    .1875, .375, 4.0/3, 3, 4, 6
+};
 enum class Routing { stereo, pingPong, mono };
 enum class Character { digital, tape, bbd, loFi };
 enum class Glitch { off, gate, stutter, reverse };
