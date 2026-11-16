@@ -8,7 +8,7 @@ void text(juce::Graphics& g,const juce::String& value,juce::Rectangle<int> bound
     g.setColour(colour);g.setFont(juce::FontOptions(size,bold?juce::Font::bold:juce::Font::plain));g.drawText(value,bounds,align);
 }
 void panel(juce::Graphics& g,juce::Rectangle<int> area,const juce::String& title,juce::Colour accent) {
-    const auto r=area.toFloat();g.setGradientFill(juce::ColourGradient(juce::Colour(0xff222d31),r.getTopLeft(),juce::Colour(0xff182125),r.getBottomRight(),false));g.fillRoundedRectangle(r,10);
+    const auto r=area.toFloat();g.setGradientFill(juce::ColourGradient(theme::kPanel.brighter(.12f),r.getTopLeft(),theme::kPanel.darker(.08f),r.getBottomRight(),false));g.fillRoundedRectangle(r,10);
     g.setColour(theme::kPanelEdge.withAlpha(.65f));g.drawRoundedRectangle(r.reduced(.5f),10,1);
     g.setColour(accent);g.fillRoundedRectangle(static_cast<float>(area.getX()+16),static_cast<float>(area.getY()+18),3,15,1.5f);
     text(g,title,{area.getX()+29,area.getY()+14,area.getWidth()-40,24},13,accent,true);
