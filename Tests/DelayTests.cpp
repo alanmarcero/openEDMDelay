@@ -140,9 +140,30 @@ void freezeLoop() {
     check(held.l[28000]>.49f,"Frozen phrase decays");
     held.engine.reset();std::fill(held.l.begin(),held.l.end(),0);held.run(s);check(energy(held.l)==0,"Reset preserves frozen history");
 }
+void sustainedHold() {
+    auto s=clean();s.rate=0;
+    Render held(48000,480000);held.l[0]=.5f;
+    held.engine.process(held.l.data(),held.r.data(),100,s,{400,0,true});
+    s.freeze=true;held.engine.process(held.l.data()+100,held.r.data()+100,479900,s,{400,100./7200,true});
+    check(held.l[18000]>.01f,"Hold lost the captured phrase during engagement");
+    check(std::abs(held.l[450000]-held.l[18000])<1.e-7f,"Settled hold keeps attenuating the phrase");
+}
+void settledHoldInput() {
+    auto s=clean();s.rate=0;
+    Render held(48000,48000);
+    held.engine.process(held.l.data(),held.r.data(),3000,s,{400,0,true});
+    s.freeze=true;held.engine.process(held.l.data()+3000,held.r.data()+3000,12000,s,{400,3000./7200,true});
+    held.l[15000]=1;
+    held.engine.process(held.l.data()+15000,held.r.data()+15000,33000,s,{400,15000./7200,true});
+    check(energy(held.l)==0,"Settled hold keeps admitting fresh input");
+    s.freeze=false;std::fill(held.l.begin(),held.l.end(),0);
+    held.engine.process(held.l.data(),held.r.data(),15000,s,{400,48000./7200,true});
+    held.l[15000]=1;held.engine.process(held.l.data()+15000,held.r.data()+15000,33000,s,{400,63000./7200,true});
+    check(held.l[15900]>.99f,"Released hold does not restore input");
+}
 int main() {
     int failed=0;
-    const std::pair<const char*,void(*)()> cases[]={{"tap probability/ratchets",tapPerformance},{"tap tone",tapTone},{"groove/morph",grooveMorph},{"freeze",freezeLoop},{"fast timing automation",fastTimeAutomation},{"stutter seams",stutterEdges},{"filter automation",filterAutomation},{"extended host-synced grid",extendedGridTiming},{"beat timing",timing},{"routing",routing},{"taps",taps},{"dry/reset",dryAndReset},{"filters",filters},{"effects",effects},{"stability/block size",stable}};
+    const std::pair<const char*,void(*)()> cases[]={{"sustained settled hold",sustainedHold},{"settled hold input rejection",settledHoldInput},{"tap probability/ratchets",tapPerformance},{"tap tone",tapTone},{"groove/morph",grooveMorph},{"freeze",freezeLoop},{"fast timing automation",fastTimeAutomation},{"stutter seams",stutterEdges},{"filter automation",filterAutomation},{"extended host-synced grid",extendedGridTiming},{"beat timing",timing},{"routing",routing},{"taps",taps},{"dry/reset",dryAndReset},{"filters",filters},{"effects",effects},{"stability/block size",stable}};
     for(const auto& [name,test]:cases)try{test();std::cout<<"PASS "<<name<<'\n';}catch(const std::exception& e){++failed;std::cerr<<"FAIL "<<name<<": "<<e.what()<<'\n';}
     return failed?1:0;
 }

@@ -3,6 +3,7 @@
 #include <cmath>
 #include <numbers>
 #include <cstdint>
+#include <limits>
 namespace oed {
 namespace {
 constexpr double pi=std::numbers::pi;
@@ -116,6 +117,9 @@ void DelayEngine::process(float* left,float* right,int frames,const Settings& s,
     }
     for(int ch=0;ch<2;++ch) {hp[static_cast<std::size_t>(ch)].configure(sampleRate,s.highPass,s.hpSlope,true);lp[static_cast<std::size_t>(ch)].configure(sampleRate,s.lowPass,s.lpSlope,false);}
     const float smooth=static_cast<float>(1-std::exp(-1/(sampleRate*.01)));
+    const float freezeTarget=s.freeze?1.f:0.f;
+    // Float rounding must not leave hold permanently short of unity at high sample rates.
+    const float freezeTolerance=std::numeric_limits<float>::epsilon()/smooth;
     const double tapeSmooth=1-std::exp(-1/(sampleRate*.12));
     const float toneCoefficient=static_cast<float>(1-std::exp(-2*pi*(s.character==Character::bbd?2600:6500)/sampleRate));
     const float attack=static_cast<float>(std::exp(-1/(sampleRate*.005)));
@@ -124,7 +128,8 @@ void DelayEngine::process(float* left,float* right,int frames,const Settings& s,
         const float dryL=finite(left[i]),dryR=right?finite(right[i]):dryL;
         const auto approach=[smooth](float& value,float target){value+=(target-value)*smooth;};
         approach(feedback,targetFeedback);approach(mix,targetMix);approach(width,targetWidth);approach(output,targetOutput);
-        approach(freezeMix,s.freeze?1.f:0.f);
+        approach(freezeMix,freezeTarget);
+        if(std::abs(freezeMix-freezeTarget)<=freezeTolerance)freezeMix=freezeTarget;
         approach(duck,targetDuck);approach(glitchMix,targetGlitch);approach(drive,targetDrive);approach(motion,targetMotion);
         const float blend=transition>0?1-static_cast<float>(transition)/fadeLength:1;
         const bool tape=s.character==Character::tape;
@@ -136,7 +141,8 @@ void DelayEngine::process(float* left,float* right,int frames,const Settings& s,
             const float a=read(buffer,newer);return transition>0?read(buffer,older)*(1-blend)+a*blend:a;
         };
         float fbL=delayed(0,previousLoop,oldLoop,tapeLoop),fbR=delayed(1,previousLoop,oldLoop,tapeLoop);
-        fbL+=(read(ring[0],frozenLoop)-fbL)*freezeMix;fbR+=(read(ring[1],frozenLoop)-fbR)*freezeMix;
+        if(freezeMix>=1) {fbL=read(ring[0],frozenLoop);fbR=read(ring[1],frozenLoop);}
+        else if(freezeMix>0) {fbL+=(read(ring[0],frozenLoop)-fbL)*freezeMix;fbR+=(read(ring[1],frozenLoop)-fbR)*freezeMix;}
         if(s.routing==Routing::pingPong)std::swap(fbL,fbR);
         float wetL=0,wetR=0;
         for(std::size_t j=0;j<tapCount;++j) {
@@ -178,7 +184,8 @@ void DelayEngine::process(float* left,float* right,int frames,const Settings& s,
         const float mono=(dryL+dryR)*.5f;
         std::array<float,2> feed{s.routing==Routing::stereo?dryL:mono,s.routing==Routing::stereo?dryR:(s.routing==Routing::mono?mono:0)};
         feed[0]*=1-freezeMix;feed[1]*=1-freezeMix;
-        feed[0]+=fbL*(feedback+(1-feedback)*freezeMix);feed[1]+=fbR*(feedback+(1-feedback)*freezeMix);
+        const float loopGain=freezeMix>=1?1.f:feedback+(1-feedback)*freezeMix;
+        feed[0]+=fbL*loopGain;feed[1]+=fbR*loopGain;
         const bool updateHold=holdCounter==0;
         holdCounter=(holdCounter+1)%std::max(1,static_cast<int>(sampleRate/12000));
         for(std::size_t ch=0;ch<2;++ch) {
@@ -199,7 +206,7 @@ void DelayEngine::process(float* left,float* right,int frames,const Settings& s,
             }
             v=lp[ch].tick(hp[ch].tick(v));
             // Bound the feedback storage without clipping the dry branch.
-            ring[ch][write]=clamp(v+(feed[ch]-v)*freezeMix,-4,4);
+            ring[ch][write]=clamp(freezeMix>=1?feed[ch]:v+(feed[ch]-v)*freezeMix,-4,4);
         }
         write=(write+1)%ring[0].size();valid=std::min(valid+1,ring[0].size());
         wetHistory[0][wetWrite]=wetL;wetHistory[1][wetWrite]=wetR;
