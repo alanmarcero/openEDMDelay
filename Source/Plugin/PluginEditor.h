@@ -22,12 +22,20 @@ public:
     void resized() override;
 private:
     void timerCallback() override;
+    void paintContent(juce::Graphics&);
+    struct Content final:juce::Component {
+        explicit Content(DelayEditor& editor):owner(editor) {}
+        void paint(juce::Graphics& g) override {owner.paintContent(g);}
+        DelayEditor& owner;
+    };
     void place(int,juce::Rectangle<int>,bool label=true);
     void makeControl(int);
     DelayProcessor& owner;
     DelayLookAndFeel look;
     TapGrid grid;
     juce::Image artwork;
+    Content content{*this};
+    juce::Viewport viewport;
     std::array<std::unique_ptr<juce::Component>,parameterCount> controls;
     std::array<std::unique_ptr<juce::Label>,parameterCount> labels;
     std::vector<std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment>> sliders;

@@ -50,8 +50,42 @@ static void legacyAndPerformanceState(){
     clean(p);p.setPlainValue(tapExtraStart+7,16);p.setPlainValue(patternMorph,100);
     require(p.getTailLengthSeconds()>=8,"Host tail excludes morphed pattern");
 }
+static void filteredTapTail() {
+    DelayProcessor p;clean(p);p.setPlainValue(gridRate,0);
+    p.setPlainValue(tapExtraStart+2,1);p.setPlainValue(tapExtraStart+4,20);
+    p.prepareToPlay(8000,128);
+    const int tail=static_cast<int>(std::ceil(p.getTailLengthSeconds()*8000));
+    juce::AudioBuffer<float> audioBuffer(2,tail+8000);audioBuffer.clear();audioBuffer.setSample(0,0,1);
+    juce::MidiBuffer midi;p.processBlock(audioBuffer,midi);
+    require(audioBuffer.getMagnitude(0,tail,audioBuffer.getNumSamples()-tail)<1.e-5f,"Host tail excludes audible tap filter settling");
+}
 void recall(){legacyAndPerformanceState();DelayProcessor p;for(int i=0;i<parameterCount;++i){const auto& s=parameterSpecs()[static_cast<std::size_t>(i)];p.setPlainValue(i,s.min+(s.max-s.min)*.73f);}juce::MemoryBlock state;p.getStateInformation(state);DelayProcessor restored;restored.setStateInformation(state.getData(),static_cast<int>(state.getSize()));for(int i=0;i<parameterCount;++i)require(p.values[static_cast<std::size_t>(i)]->load()==restored.values[static_cast<std::size_t>(i)]->load(),"Session state loses parameter");restored.setStateInformation("invalid",7);require(restored.values[mix]->load()==p.values[mix]->load(),"Malformed state resets parameters");}
 juce::Component* find(juce::Component& root,const juce::String& id){if(root.getComponentID()==id)return &root;for(auto* c:root.getChildren())if(auto* result=find(*c,id))return result;return nullptr;}
+static void scrollableControls() {
+    DelayProcessor p;std::unique_ptr<juce::AudioProcessorEditor> editor(p.createEditor());
+    require(editor->getHeight()<=850,"Default editor exceeds common display height");
+    auto* viewport=dynamic_cast<juce::Viewport*>(find(*editor,"editorViewport"));
+    require(viewport!=nullptr,"Editor has no scrollable control surface");
+    auto* tap=dynamic_cast<juce::ComboBox*>(find(*editor,"performanceTap"));
+    require(tap!=nullptr,"Performance tap selector missing");
+    for(const auto bounds:{juce::Point<int>(1216,850),juce::Point<int>(900,600)}) {
+        editor->setSize(bounds.x,bounds.y);
+        for(int index=0;index<tapCount;++index) {
+            tap->setSelectedId(index+1,juce::sendNotificationSync);
+            for(int field=0;field<tapExtraCount;++field) {
+                auto* control=find(*editor,parameterSpecs()[static_cast<std::size_t>(tapExtraStart+index*tapExtraCount+field)].id);
+                require(control!=nullptr&&control->isVisible(),"Selected tap control is hidden");
+                viewport->setViewPosition(control->getX(),control->getY());
+                require(viewport->getViewArea().contains(control->getBounds()),"New tap control cannot scroll fully into view");
+            }
+        }
+        for(int id:{swing,groove,freeze,patternMorph}) {
+            auto* control=find(*editor,parameterSpecs()[static_cast<std::size_t>(id)].id);
+            viewport->setViewPosition(control->getX(),control->getY());
+            require(viewport->getViewArea().contains(control->getBounds()),"Performance control cannot scroll fully into view");
+        }
+    }
+}
 void ui(const juce::File& destination){
     DelayProcessor p;p.prepareToPlay(48000,256);std::unique_ptr<juce::AudioProcessorEditor> e(p.createEditor());
     auto* initialMix=find(*e,"mix");require(initialMix!=nullptr,"Initial mix control missing");bool initialUnit=false;
@@ -76,6 +110,9 @@ void ui(const juce::File& destination){
     require(destination.createDirectory().wasOk(),"Screenshot directory failed");
     const auto save=[&](const juce::String& name){auto out=destination.getChildFile(name).createOutputStream();require(out!=nullptr,"Screenshot open failed");out->setPosition(0);out->truncate();require(juce::PNGImageFormat{}.writeImageToStream(e->createComponentSnapshot(e->getLocalBounds(),true,1.5f),*out),"Screenshot failed");};
     p.setCurrentProgram(0);p.processBlock(b,midi);juce::MessageManager::getInstance()->runDispatchLoopUntil(60);save("openEDMDelay.png");
+    auto* viewport=dynamic_cast<juce::Viewport*>(find(*e,"editorViewport"));
+    require(viewport!=nullptr,"Editor viewport missing during capture");
+    viewport->setViewPosition(0,1100);save("openEDMDelay-performance.png");viewport->setViewPosition(0,0);
     p.setCurrentProgram(7);p.processBlock(b,midi);juce::MessageManager::getInstance()->runDispatchLoopUntil(60);save("openEDMDelay-glitch.png");p.setPlayHead(nullptr);
 }
-int main(int argc,char** argv){juce::ScopedJuceInitialiser_GUI gui;int errors=0;for(const auto& [name,test]:std::initializer_list<std::pair<const char*,void(*)()>>{{"host audio/bypass",audio},{"session recall",recall},{"malformed parameter state",malformedState},{"preset while bypassed",presetWhileBypassed}})try{test();std::cout<<"PASS "<<name<<'\n';}catch(const std::exception& e){std::cerr<<"FAIL "<<name<<": "<<e.what()<<'\n';++errors;}try{ui(juce::File::getCurrentWorkingDirectory().getChildFile(argc>1?argv[1]:"docs/screenshots"));std::cout<<"PASS native controls and actual editor screenshots\n";}catch(const std::exception& e){std::cerr<<"FAIL UI: "<<e.what()<<'\n';++errors;}return errors?1:0;}
+int main(int argc,char** argv){juce::ScopedJuceInitialiser_GUI gui;int errors=0;for(const auto& [name,test]:std::initializer_list<std::pair<const char*,void(*)()>>{{"filtered tap host tail",filteredTapTail},{"scrollable control access",scrollableControls},{"host audio/bypass",audio},{"session recall",recall},{"malformed parameter state",malformedState},{"preset while bypassed",presetWhileBypassed}})try{test();std::cout<<"PASS "<<name<<'\n';}catch(const std::exception& e){std::cerr<<"FAIL "<<name<<": "<<e.what()<<'\n';++errors;}try{ui(juce::File::getCurrentWorkingDirectory().getChildFile(argc>1?argv[1]:"docs/screenshots"));std::cout<<"PASS native controls and actual editor screenshots\n";}catch(const std::exception& e){std::cerr<<"FAIL UI: "<<e.what()<<'\n';++errors;}return errors?1:0;}

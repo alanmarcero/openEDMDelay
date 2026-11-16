@@ -31,7 +31,7 @@ Each tap also has a Chance control (0–100%), 1–8 evenly spaced ratchets acro
 
 Swing delays every second grid step by up to half a unit. Groove selects Manual swing, Shuffle (25% offbeat delay), or Broken (four-step timing offsets). Pattern morph interpolates each tap's current step toward its editable Target step; tap enable, level and pan stay as set. Tape glides between timings; other characters crossfade.
 
-Feedback hold stops admitting new input and recirculates the phrase at unity gain, bypassing feedback colour and filtering while held. The held loop length is captured on engagement and rounded to a sample to avoid interpolation loss. Hold transitions are smoothed; release restores normal feedback and incoming audio. Bypass and reset clear the held phrase. All performance controls support host automation and session recall; the bottom panel selects which tap to edit. Older sessions restore with these additions neutral.
+Feedback hold stops admitting new input and recirculates the phrase at unity gain, bypassing feedback colour and filtering while held. The held loop length is captured on engagement and rounded to a sample to avoid interpolation loss. Hold transitions are smoothed; release restores normal feedback and incoming audio. Bypass and reset clear the held phrase. All performance controls support host automation and session recall; scroll to the bottom panel to select which tap to edit. The editor opens at 1216 × 850 and resizes down to 900 × 600; scrollbars keep every control reachable. Older sessions restore with these additions neutral.
 
 ## Install
 

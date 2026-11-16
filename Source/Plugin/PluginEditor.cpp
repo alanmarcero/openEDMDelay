@@ -65,8 +65,11 @@ void TapGrid::mouseUp(const juce::MouseEvent&) {
 }
 DelayEditor::DelayEditor(DelayProcessor& p):AudioProcessorEditor(p),owner(p),grid(p) {
     setLookAndFeel(&look);artwork=juce::ImageCache::getFromMemory(BinaryData::tapeecho_png,BinaryData::tapeecho_pngSize);
+    viewport.setComponentID("editorViewport");addAndMakeVisible(viewport);
+    viewport.setViewedComponent(&content,false);viewport.setScrollBarsShown(true,true);
+    viewport.setScrollBarThickness(16);content.setSize(1200,1100);
     for(int i=0;i<parameterCount;++i)makeControl(i);
-    addAndMakeVisible(grid);addAndMakeVisible(preset);addAndMakeVisible(pattern);
+    content.addAndMakeVisible(grid);content.addAndMakeVisible(preset);content.addAndMakeVisible(pattern);
     preset.setComponentID("preset");pattern.setComponentID("pattern");
     for(int i=0;i<p.getNumPrograms();++i)preset.addItem(p.getProgramName(i),i+1);
     preset.setSelectedId(p.getCurrentProgram()+1,juce::dontSendNotification);
@@ -82,7 +85,7 @@ DelayEditor::DelayEditor(DelayProcessor& p):AudioProcessorEditor(p),owner(p),gri
         pattern.setSelectedId(0,juce::dontSendNotification);
         preset.setSelectedId(nextProg+1,juce::dontSendNotification);
     };
-    addAndMakeVisible(prevPreset);
+    content.addAndMakeVisible(prevPreset);
     nextPreset.setComponentID("nextPreset");
     nextPreset.setTooltip("Next preset");
     nextPreset.onClick=[this]{
@@ -94,32 +97,32 @@ DelayEditor::DelayEditor(DelayProcessor& p):AudioProcessorEditor(p),owner(p),gri
         pattern.setSelectedId(0,juce::dontSendNotification);
         preset.setSelectedId(nextProg+1,juce::dontSendNotification);
     };
-    addAndMakeVisible(nextPreset);
+    content.addAndMakeVisible(nextPreset);
     pattern.addItemList(patternNames(),1);pattern.setTextWhenNothingSelected("Pattern / Custom");pattern.setTooltip("Load tap positions, levels and stereo pans. Grid rate and effects are preserved.");
     pattern.onChange=[this]{owner.applyPattern(pattern.getSelectedId()-1);};
-    addAndMakeVisible(selectedTap);selectedTap.setComponentID("performanceTap");
+    content.addAndMakeVisible(selectedTap);selectedTap.setComponentID("performanceTap");
     for(int i=0;i<tapCount;++i)selectedTap.addItem("Edit tap "+juce::String(i+1),i+1);
     selectedTap.setSelectedId(1,juce::dontSendNotification);selectedTap.onChange=[this]{resized();};
-    setSize(1200,1100);startTimerHz(24);
+    setResizable(true,false);setResizeLimits(900,600,1216,850);setSize(1216,850);startTimerHz(24);
 }
 DelayEditor::~DelayEditor(){stopTimer();setLookAndFeel(nullptr);}
 void DelayEditor::makeControl(int i) {
     const auto& spec=parameterSpecs()[static_cast<std::size_t>(i)];
     const auto colour=i>=baseCount?accent((i-baseCount)/4):(i==highPass||i==hpSlope?theme::kAccentA:theme::kAccentB);
-    auto label=std::make_unique<juce::Label>();label->setText(spec.name,juce::dontSendNotification);label->setJustificationType(juce::Justification::centred);label->setFont(juce::FontOptions(11.5f));label->setColour(juce::Label::textColourId,theme::kTextDim);addAndMakeVisible(*label);labels[static_cast<std::size_t>(i)]=std::move(label);
+    auto label=std::make_unique<juce::Label>();label->setText(spec.name,juce::dontSendNotification);label->setJustificationType(juce::Justification::centred);label->setFont(juce::FontOptions(11.5f));label->setColour(juce::Label::textColourId,theme::kTextDim);content.addAndMakeVisible(*label);labels[static_cast<std::size_t>(i)]=std::move(label);
     if(i==bypass||(i>=baseCount&&i<swing&&(i-baseCount)%4==0)) {
         auto c=std::make_unique<juce::TextButton>(i==bypass?"BYPASS":"TAP "+juce::String((i-baseCount)/4+1).paddedLeft('0',2));
         c->setClickingTogglesState(true);c->setColour(juce::TextButton::buttonOnColourId,i==bypass?theme::kAccentB:colour);
-        c->setComponentID(spec.id);addAndMakeVisible(*c);buttons.push_back(std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(owner.parameters,spec.id,*c));controls[static_cast<std::size_t>(i)]=std::move(c);
+        c->setComponentID(spec.id);content.addAndMakeVisible(*c);buttons.push_back(std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(owner.parameters,spec.id,*c));controls[static_cast<std::size_t>(i)]=std::move(c);
     } else if(spec.choices.isNotEmpty()) {
-        auto c=std::make_unique<juce::ComboBox>();c->addItemList(juce::StringArray::fromTokens(spec.choices,"|",""),1);c->setColour(juce::ComboBox::outlineColourId,colour);c->setComponentID(spec.id);addAndMakeVisible(*c);combos.push_back(std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(owner.parameters,spec.id,*c));controls[static_cast<std::size_t>(i)]=std::move(c);
+        auto c=std::make_unique<juce::ComboBox>();c->addItemList(juce::StringArray::fromTokens(spec.choices,"|",""),1);c->setColour(juce::ComboBox::outlineColourId,colour);c->setComponentID(spec.id);content.addAndMakeVisible(*c);combos.push_back(std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(owner.parameters,spec.id,*c));controls[static_cast<std::size_t>(i)]=std::move(c);
     } else {
         auto c=std::make_unique<juce::Slider>();c->setLookAndFeel(&look);c->setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);c->setTextBoxStyle(juce::Slider::TextBoxBelow,false,86,22);c->setColour(juce::Slider::rotarySliderFillColourId,colour);c->setComponentID(spec.id);c->setDoubleClickReturnValue(true,spec.initial);
         const bool step=spec.id.endsWith("Step"),pan=i>=baseCount&&i<swing&&(i-baseCount)%4==3;
         if(step){c->setSliderStyle(juce::Slider::IncDecButtons);c->setTextBoxStyle(juce::Slider::TextBoxLeft,false,32,24);c->setIncDecButtonsMode(juce::Slider::incDecButtonsDraggable_Vertical);}
         if(i==drive||i==motion){c->setSliderStyle(juce::Slider::LinearHorizontal);c->setTextBoxStyle(juce::Slider::TextBoxRight,false,38,22);c->setColour(juce::Slider::trackColourId,colour);c->setColour(juce::Slider::thumbColourId,colour);}
         if(pan){c->setSliderStyle(juce::Slider::LinearHorizontal);c->setTextBoxStyle(juce::Slider::NoTextBox,false,0,0);c->setColour(juce::Slider::trackColourId,colour);c->setColour(juce::Slider::thumbColourId,colour);}
-        addAndMakeVisible(*c);sliders.push_back(std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(owner.parameters,spec.id,*c));
+        content.addAndMakeVisible(*c);sliders.push_back(std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(owner.parameters,spec.id,*c));
         c->textFromValueFunction=[i,step,pan,unit=spec.unit](double v){if(step)return juce::String(static_cast<int>(v));if(pan)return std::abs(v)<.01?juce::String("C"):juce::String(static_cast<int>(std::round(std::abs(v))))+(v<0?" L":" R");if(i==highPass||i==lowPass)return v>=1000?juce::String(v/1000,2)+" kHz":juce::String(static_cast<int>(std::round(v)))+" Hz";return (i==output?juce::String(std::abs(v)<.005?0:v,1):juce::String(static_cast<int>(std::round(v))))+(unit=="%"?"%":" "+unit);};
         c->valueFromTextFunction=[i](const juce::String& t){const double value=t.getDoubleValue();return (i==highPass||i==lowPass)&&t.containsIgnoreCase("k")?value*1000:value;};
         c->updateText();
@@ -143,6 +146,7 @@ void DelayEditor::place(int id,juce::Rectangle<int> r,bool showLabel) {
     controls[static_cast<std::size_t>(id)]->setBounds(r);auto& label=*labels[static_cast<std::size_t>(id)];label.setVisible(showLabel);label.setBounds(r.getX()-6,r.getBottom()+1,r.getWidth()+12,19);
 }
 void DelayEditor::resized() {
+    viewport.setBounds(getLocalBounds());
     selectedTap.setBounds(1000,905,164,28);
     place(swing,{30,948,80,104});place(groove,{117,962,106,28});
     place(freeze,{117,1024,106,28});place(patternMorph,{230,948,80,104});
@@ -169,7 +173,8 @@ void DelayEditor::resized() {
     place(duckRate,{627,807,113,28},false);place(glitchRate,{754,807,113,28},false);
     place(mix,{916,688,87,119});place(width,{1007,688,77,119});place(output,{1090,688,77,119});
 }
-void DelayEditor::paint(juce::Graphics& g) {
+void DelayEditor::paint(juce::Graphics& g) {g.fillAll(theme::kBackground);}
+void DelayEditor::paintContent(juce::Graphics& g) {
     g.fillAll(theme::kBackground);
 
     g.setGradientFill(juce::ColourGradient(theme::kAccentA.withAlpha(.12f),0,0,theme::kAccentB.withAlpha(.03f),1200,890,false));g.fillAll();
@@ -215,6 +220,6 @@ void DelayEditor::timerCallback() {
     const int current=owner.getCurrentProgram();if(current!=shownProgram){shownProgram=current;preset.setSelectedId(current+1,juce::dontSendNotification);}
     const auto s=owner.settings();for(int i=0;i<8;++i)controls[static_cast<std::size_t>(baseCount+i*4+3)]->setEnabled(s.routing==Routing::stereo);
     controls[tempo]->setEnabled(!owner.hostSync.load());controls[motion]->setEnabled(s.character==Character::tape);
-    controls[drive]->setEnabled(s.character==Character::tape||s.character==Character::bbd);grid.repaint();repaint();
+    controls[drive]->setEnabled(s.character==Character::tape||s.character==Character::bbd);grid.repaint();content.repaint();
 }
 }
