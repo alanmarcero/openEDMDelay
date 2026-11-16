@@ -25,7 +25,9 @@ Drive applies to Tape and BBD; Motion applies to Tape. Tap pan applies to Stereo
 
 ![openEDMDelay Broken Transmission program in the native editor](docs/screenshots/openEDMDelay-glitch.png)
 
-Both screenshots are captures of the compiled JUCE editor, taken by the integration test with a simulated 128 BPM host. The tape illustration is original generated artwork embedded in that editor.
+![openEDMDelay tap performance, groove, filters, and hold controls](docs/screenshots/openEDMDelay-performance.png)
+
+These are captures of the compiled JUCE editor, taken by the integration test with a simulated 128 BPM host. The tape illustration is original generated artwork embedded in that editor.
 
 Each tap also has a Chance control (0–100%), 1–8 evenly spaced ratchets across one grid unit, optional 12 dB/oct high/low-pass filters, Digital/Tape/BBD/Lo-fi colour and drive. These shape the tap output after the global feedback character. Ratchets divide the tap level to retain headroom. Chance is deterministic per source phrase and tap, so playback and host seeks reproduce the same decisions.
 
