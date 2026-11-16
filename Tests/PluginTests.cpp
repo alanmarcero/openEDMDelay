@@ -43,9 +43,11 @@ static void legacyAndPerformanceState(){
     p.setPlainValue(mix,15);p.setStateInformation(block.getData(),static_cast<int>(block.getSize()));
     require(std::abs(p.values[mix]->load()-73)<.0001f,"Legacy state rejected after adding parameters");
     p.setPlainValue(swing,50);p.setPlainValue(patternMorph,75);p.setPlainValue(freeze,1);
+    p.setPlainValue(diffusion,35);p.setPlainValue(diffusionSize,24);p.setPlainValue(wobbleRate,2.5f);p.setPlainValue(wobbleShape,3);
     p.setPlainValue(tapExtraStart,35);p.setPlainValue(tapExtraStart+1,3);
     const auto settings=p.settings();
     require(settings.swing==.5f&&settings.morph==.75f&&settings.freeze,"Performance parameters disconnected");
+    require(std::abs(settings.diffusion-.35f)<.0001f&&std::abs(settings.diffusionSize-24)<.0001f&&std::abs(settings.wobbleRate-2.5f)<.0001f&&settings.wobbleShape==WobbleShape::randomWalk,"Diffusion or wobble parameters disconnected");
     require(std::abs(settings.taps[0].probability-.35f)<.0001f&&settings.taps[0].ratchets==4,"Tap performance parameters disconnected");
     clean(p);p.setPlainValue(tapExtraStart+7,16);p.setPlainValue(patternMorph,100);
     require(p.getTailLengthSeconds()>=8,"Host tail excludes morphed pattern");
@@ -58,6 +60,12 @@ static void filteredTapTail() {
     juce::AudioBuffer<float> audioBuffer(2,tail+8000);audioBuffer.clear();audioBuffer.setSample(0,0,1);
     juce::MidiBuffer midi;p.processBlock(audioBuffer,midi);
     require(audioBuffer.getMagnitude(0,tail,audioBuffer.getNumSamples()-tail)<1.e-5f,"Host tail excludes audible tap filter settling");
+}
+static void diffusionHostTail() {
+    DelayProcessor p;clean(p);p.setPlainValue(gridRate,0);
+    const double dryTail=p.getTailLengthSeconds();
+    p.setPlainValue(diffusion,100);p.setPlainValue(diffusionSize,30);
+    require(p.getTailLengthSeconds()>dryTail+.5,"Host tail excludes the diffusion network decay");
 }
 void recall(){legacyAndPerformanceState();DelayProcessor p;for(int i=0;i<parameterCount;++i){const auto& s=parameterSpecs()[static_cast<std::size_t>(i)];p.setPlainValue(i,s.min+(s.max-s.min)*.73f);}juce::MemoryBlock state;p.getStateInformation(state);DelayProcessor restored;restored.setStateInformation(state.getData(),static_cast<int>(state.getSize()));for(int i=0;i<parameterCount;++i)require(p.values[static_cast<std::size_t>(i)]->load()==restored.values[static_cast<std::size_t>(i)]->load(),"Session state loses parameter");restored.setStateInformation("invalid",7);require(restored.values[mix]->load()==p.values[mix]->load(),"Malformed state resets parameters");}
 juce::Component* find(juce::Component& root,const juce::String& id){if(root.getComponentID()==id)return &root;for(auto* c:root.getChildren())if(auto* result=find(*c,id))return result;return nullptr;}
@@ -79,7 +87,7 @@ static void scrollableControls() {
                 require(viewport->getViewArea().contains(control->getBounds()),"New tap control cannot scroll fully into view");
             }
         }
-        for(int id:{swing,groove,freeze,patternMorph}) {
+        for(const int id:std::array<int,8>{swing,groove,freeze,patternMorph,diffusion,diffusionSize,wobbleRate,wobbleShape}) {
             auto* control=find(*editor,parameterSpecs()[static_cast<std::size_t>(id)].id);
             viewport->setViewPosition(control->getX(),control->getY());
             require(viewport->getViewArea().contains(control->getBounds()),"Performance control cannot scroll fully into view");
@@ -109,10 +117,11 @@ void ui(const juce::File& destination){
     require(std::all_of(usedDivisions.begin(),usedDivisions.end(),[](bool used){return used;}),"Factory bank does not use every synchronized grid division");
     require(destination.createDirectory().wasOk(),"Screenshot directory failed");
     const auto save=[&](const juce::String& name){auto out=destination.getChildFile(name).createOutputStream();require(out!=nullptr,"Screenshot open failed");out->setPosition(0);out->truncate();require(juce::PNGImageFormat{}.writeImageToStream(e->createComponentSnapshot(e->getLocalBounds(),true,1.5f),*out),"Screenshot failed");};
-    p.setCurrentProgram(0);p.processBlock(b,midi);juce::MessageManager::getInstance()->runDispatchLoopUntil(60);save("openEDMDelay.png");
+    p.setCurrentProgram(32);p.processBlock(b,midi);juce::MessageManager::getInstance()->runDispatchLoopUntil(60);save("openEDMDelay.png");
     auto* viewport=dynamic_cast<juce::Viewport*>(find(*e,"editorViewport"));
     require(viewport!=nullptr,"Editor viewport missing during capture");
-    viewport->setViewPosition(0,1100);save("openEDMDelay-performance.png");viewport->setViewPosition(0,0);
+    p.setCurrentProgram(0);p.setPlainValue(diffusion,65);p.setPlainValue(diffusionSize,20);p.processBlock(b,midi);
+    juce::MessageManager::getInstance()->runDispatchLoopUntil(60);viewport->setViewPosition(0,1100);save("openEDMDelay-performance.png");viewport->setViewPosition(0,0);
     p.setCurrentProgram(7);p.processBlock(b,midi);juce::MessageManager::getInstance()->runDispatchLoopUntil(60);save("openEDMDelay-glitch.png");p.setPlayHead(nullptr);
 }
-int main(int argc,char** argv){juce::ScopedJuceInitialiser_GUI gui;int errors=0;for(const auto& [name,test]:std::initializer_list<std::pair<const char*,void(*)()>>{{"filtered tap host tail",filteredTapTail},{"scrollable control access",scrollableControls},{"host audio/bypass",audio},{"session recall",recall},{"malformed parameter state",malformedState},{"preset while bypassed",presetWhileBypassed}})try{test();std::cout<<"PASS "<<name<<'\n';}catch(const std::exception& e){std::cerr<<"FAIL "<<name<<": "<<e.what()<<'\n';++errors;}try{ui(juce::File::getCurrentWorkingDirectory().getChildFile(argc>1?argv[1]:"docs/screenshots"));std::cout<<"PASS native controls and actual editor screenshots\n";}catch(const std::exception& e){std::cerr<<"FAIL UI: "<<e.what()<<'\n';++errors;}return errors?1:0;}
+int main(int argc,char** argv){juce::ScopedJuceInitialiser_GUI gui;int errors=0;for(const auto& [name,test]:std::initializer_list<std::pair<const char*,void(*)()>>{{"filtered tap host tail",filteredTapTail},{"diffusion host tail",diffusionHostTail},{"scrollable control access",scrollableControls},{"host audio/bypass",audio},{"session recall",recall},{"malformed parameter state",malformedState},{"preset while bypassed",presetWhileBypassed}})try{test();std::cout<<"PASS "<<name<<'\n';}catch(const std::exception& e){std::cerr<<"FAIL "<<name<<": "<<e.what()<<'\n';++errors;}try{ui(juce::File::getCurrentWorkingDirectory().getChildFile(argc>1?argv[1]:"docs/screenshots"));std::cout<<"PASS native controls and actual editor screenshots\n";}catch(const std::exception& e){std::cerr<<"FAIL UI: "<<e.what()<<'\n';++errors;}return errors?1:0;}

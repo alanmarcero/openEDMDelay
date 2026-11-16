@@ -69,7 +69,7 @@ DelayEditor::DelayEditor(DelayProcessor& p):AudioProcessorEditor(p),owner(p),gri
     viewport.setViewedComponent(&content,false);viewport.setScrollBarsShown(true,true);
     viewport.setScrollBarThickness(16);content.setSize(1200,1100);
     for(int i=0;i<parameterCount;++i)makeControl(i);
-    content.addAndMakeVisible(grid);content.addAndMakeVisible(preset);content.addAndMakeVisible(pattern);
+    content.setSize(1200,1300);content.addAndMakeVisible(grid);content.addAndMakeVisible(preset);content.addAndMakeVisible(pattern);
     preset.setComponentID("preset");pattern.setComponentID("pattern");
     for(int i=0;i<p.getNumPrograms();++i)preset.addItem(p.getProgramName(i),i+1);
     preset.setSelectedId(p.getCurrentProgram()+1,juce::dontSendNotification);
@@ -120,10 +120,10 @@ void DelayEditor::makeControl(int i) {
         auto c=std::make_unique<juce::Slider>();c->setLookAndFeel(&look);c->setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);c->setTextBoxStyle(juce::Slider::TextBoxBelow,false,86,22);c->setColour(juce::Slider::rotarySliderFillColourId,colour);c->setComponentID(spec.id);c->setDoubleClickReturnValue(true,spec.initial);
         const bool step=spec.id.endsWith("Step"),pan=i>=baseCount&&i<swing&&(i-baseCount)%4==3;
         if(step){c->setSliderStyle(juce::Slider::IncDecButtons);c->setTextBoxStyle(juce::Slider::TextBoxLeft,false,32,24);c->setIncDecButtonsMode(juce::Slider::incDecButtonsDraggable_Vertical);}
-        if(i==drive||i==motion){c->setSliderStyle(juce::Slider::LinearHorizontal);c->setTextBoxStyle(juce::Slider::TextBoxRight,false,38,22);c->setColour(juce::Slider::trackColourId,colour);c->setColour(juce::Slider::thumbColourId,colour);}
+        if(i==drive||i==motion||i==wobbleRate){c->setSliderStyle(juce::Slider::LinearHorizontal);c->setTextBoxStyle(juce::Slider::TextBoxRight,false,i==wobbleRate?58:38,22);c->setColour(juce::Slider::trackColourId,colour);c->setColour(juce::Slider::thumbColourId,colour);}
         if(pan){c->setSliderStyle(juce::Slider::LinearHorizontal);c->setTextBoxStyle(juce::Slider::NoTextBox,false,0,0);c->setColour(juce::Slider::trackColourId,colour);c->setColour(juce::Slider::thumbColourId,colour);}
         content.addAndMakeVisible(*c);sliders.push_back(std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(owner.parameters,spec.id,*c));
-        c->textFromValueFunction=[i,step,pan,unit=spec.unit](double v){if(step)return juce::String(static_cast<int>(v));if(pan)return std::abs(v)<.01?juce::String("C"):juce::String(static_cast<int>(std::round(std::abs(v))))+(v<0?" L":" R");if(i==highPass||i==lowPass)return v>=1000?juce::String(v/1000,2)+" kHz":juce::String(static_cast<int>(std::round(v)))+" Hz";return (i==output?juce::String(std::abs(v)<.005?0:v,1):juce::String(static_cast<int>(std::round(v))))+(unit=="%"?"%":" "+unit);};
+        c->textFromValueFunction=[i,step,pan,unit=spec.unit](double v){if(step)return juce::String(static_cast<int>(v));if(pan)return std::abs(v)<.01?juce::String("C"):juce::String(static_cast<int>(std::round(std::abs(v))))+(v<0?" L":" R");if(i==highPass||i==lowPass)return v>=1000?juce::String(v/1000,2)+" kHz":juce::String(static_cast<int>(std::round(v)))+" Hz";if(i==wobbleRate)return juce::String(v,2)+" Hz";return (i==output?juce::String(std::abs(v)<.005?0:v,1):juce::String(static_cast<int>(std::round(v))))+(unit=="%"?"%":" "+unit);};
         c->valueFromTextFunction=[i](const juce::String& t){const double value=t.getDoubleValue();return (i==highPass||i==lowPass)&&t.containsIgnoreCase("k")?value*1000:value;};
         c->updateText();
         c->setTooltip(spec.name+". Drag to adjust; double-click to reset. Host automatable.");controls[static_cast<std::size_t>(i)]=std::move(c);
@@ -134,7 +134,11 @@ void DelayEditor::makeControl(int i) {
         if(i==feedback)tooltipClient->setTooltip("Repeat the full phrase from the last active tap. Maximum 97%.");
         if(i==gridRate)tooltipClient->setTooltip("Each grid step is this note length. T = triplet; D = dotted. Always tempo-synced.");
         if(i==tempo)tooltipClient->setTooltip("Internal tempo is used only when the host does not provide a valid BPM.");
-        if(i==motion)tooltipClient->setTooltip("Beat-related wow and flutter in Tape character.");
+        if(i==motion)tooltipClient->setTooltip("Tape wow and flutter depth. Wobble Rate sets its speed.");
+        if(i==wobbleRate)tooltipClient->setTooltip("Tape pitch-modulation speed. The Motion control sets its depth.");
+        if(i==wobbleShape)tooltipClient->setTooltip("Tape wobble waveform: smooth, stepped, or deterministic random movement.");
+        if(i==diffusion)tooltipClient->setTooltip("Smears each echo inside the feedback loop. Higher values make repeats denser.");
+        if(i==diffusionSize)tooltipClient->setTooltip("Sets the time spacing of the diffusion stages. Short settings stay compact; longer settings sound broader.");
         if(i==drive)tooltipClient->setTooltip("Saturation amount for Tape and BBD characters.");
         if(i==duckMode)tooltipClient->setTooltip("Beat: rhythmic wet ducking. Input: duck echoes while the incoming audio is loud. Rate sets recovery.");
         if(i==routing)tooltipClient->setTooltip("Stereo uses tap pan. Ping Pong alternates taps and crossfeeds each phrase. Mono collapses the wet branch.");
@@ -158,7 +162,8 @@ void DelayEditor::resized() {
     }
     prevPreset.setBounds(850,26,28,35);preset.setBounds(882,26,166,35);nextPreset.setBounds(1052,26,28,35);place(bypass,{1093,26,86,35},false);pattern.setBounds(645,109,195,29);grid.setBounds(39,149,801,220);
     place(routing,{896,267,132,28},false);place(character,{1040,267,124,28},false);
-    place(drive,{901,321,119,25});place(motion,{1038,321,119,25});
+    place(drive,{901,298,119,20});place(motion,{1038,298,119,20});
+    place(wobbleRate,{901,343,119,20});place(wobbleShape,{1038,343,124,20});
     for(int i=0;i<tapCount;++i) {
         const int x=31+i*145,p=baseCount+i*4;
         place(p,{x+2,405,70,26},false);place(p+1,{x+79,405,57,26},false);
@@ -172,6 +177,7 @@ void DelayEditor::resized() {
     place(duck,{634,680,100,108});place(glitchAmount,{760,680,100,108});
     place(duckRate,{627,807,113,28},false);place(glitchRate,{754,807,113,28},false);
     place(mix,{916,688,87,119});place(width,{1007,688,77,119});place(output,{1090,688,77,119});
+    place(diffusion,{46,1132,92,112});place(diffusionSize,{151,1132,92,112});
 }
 void DelayEditor::paint(juce::Graphics& g) {g.fillAll(theme::kBackground);}
 void DelayEditor::paintContent(juce::Graphics& g) {
@@ -185,7 +191,7 @@ void DelayEditor::paintContent(juce::Graphics& g) {
     g.setColour(synced?theme::kAccentA:theme::kAccentB);g.fillEllipse(595,36,6,6);
     text(g,juce::String(owner.displayedBpm.load(),1)+" BPM  /  "+(synced?"HOST":"INTERNAL"),{612,26,222,29},12.5f,theme::kTextDim);
     panel(g,{20,96,840,278},"TAP FIELD",theme::kAccentA);text(g,"16 STEPS  /  8 VOICES",{344,113,235,20},10.5f,theme::kTextDim);
-    panel(g,{880,96,300,278},"",theme::kAccentB);
+    panel(g,{880,96,300,300},"",theme::kAccentB);
     {juce::Graphics::ScopedSaveState state(g);juce::Path clip;clip.addRoundedRectangle(891,104,278,151,6);g.reduceClipRegion(clip);g.drawImage(artwork,{891.f,91.f,278.f,185.3f},juce::RectanglePlacement::fillDestination);}
     text(g,"ROUTING",{899,246,120,17},9,theme::kTextDim,true);text(g,"CHARACTER",{1042,246,120,17},9,theme::kTextDim,true);
     g.setColour(theme::kPanel);g.fillRoundedRectangle(20,392,1160,184,10);
@@ -207,6 +213,7 @@ void DelayEditor::paintContent(juce::Graphics& g) {
         g.fillRoundedRectangle(628, 626, 120.f * duckAtten, 4, 2);
     }
     panel(g,{905,596,275,250},"OUTPUT",theme::kAccentOut);
+    panel(g,{20,1090,1160,190},"ECHO DIFFUSION",theme::kAccentB);
     const float peak=juce::jlimit(0.f,1.f,owner.outputPeak.load());
     g.setColour(theme::kTrack);g.fillRoundedRectangle(925,648,235,5,2);
     g.setColour(theme::kAccentA);g.fillRoundedRectangle(925,648,235*peak,5,2);
@@ -220,6 +227,8 @@ void DelayEditor::timerCallback() {
     const int current=owner.getCurrentProgram();if(current!=shownProgram){shownProgram=current;preset.setSelectedId(current+1,juce::dontSendNotification);}
     const auto s=owner.settings();for(int i=0;i<8;++i)controls[static_cast<std::size_t>(baseCount+i*4+3)]->setEnabled(s.routing==Routing::stereo);
     controls[tempo]->setEnabled(!owner.hostSync.load());controls[motion]->setEnabled(s.character==Character::tape);
+    controls[wobbleRate]->setEnabled(s.character==Character::tape);controls[wobbleShape]->setEnabled(s.character==Character::tape);
+    controls[diffusionSize]->setEnabled(s.diffusion>0);
     controls[drive]->setEnabled(s.character==Character::tape||s.character==Character::bbd);grid.repaint();content.repaint();
 }
 }

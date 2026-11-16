@@ -53,6 +53,10 @@ const std::array<ParameterSpec,parameterCount>& parameterSpecs() {
             a[p+6]={prefix+"Drive",title+"drive",0,100,25,1,"","%"};
             a[p+7]={prefix+"MorphStep",title+"target",1,16,static_cast<float>(steps[i]),1,"",""};
         }
+        a[diffusion]={"diffusion","Diffusion",0,100,0,1,"","%"};
+        a[diffusionSize]={"diffusionSize","Diffusion size",2,30,12,1,"","ms"};
+        a[wobbleRate]={"wobbleRate","Wobble rate",.05f,8,.5f,.4f,"","Hz"};
+        a[wobbleShape]={"wobbleShape","Wobble shape",0,4,0,1,"Sine|Triangle|Square|Random walk|Sample & hold",""};
         return a;
     }();return specs;
 }
@@ -73,7 +77,8 @@ Settings readSettings(const ParameterValues& v) {
     const auto get=[&](int p){return v[static_cast<std::size_t>(p)]->load(std::memory_order_relaxed);};
     Settings s;s.swing=get(swing)*.01f;s.groove=static_cast<int>(get(groove));s.freeze=get(freeze)>.5f;s.morph=get(patternMorph)*.01f;s.rate=static_cast<int>(get(gridRate));s.routing=static_cast<Routing>(static_cast<int>(get(routing)));s.character=static_cast<Character>(static_cast<int>(get(character)));
     s.feedback=get(feedback)*.01f;s.decay=get(decay)*.01f;s.highPass=get(highPass);s.lowPass=get(lowPass);s.hpSlope=static_cast<int>(get(hpSlope));s.lpSlope=static_cast<int>(get(lpSlope));
-    s.drive=get(drive)*.01f;s.motion=get(motion)*.01f;s.duck=get(duck)*.01f;s.inputDuck=get(duckMode)>.5f;s.duckRate=static_cast<int>(get(duckRate));
+    s.drive=get(drive)*.01f;s.motion=get(motion)*.01f;s.wobbleRate=get(wobbleRate);s.wobbleShape=static_cast<WobbleShape>(static_cast<int>(get(wobbleShape)));
+    s.diffusion=get(diffusion)*.01f;s.diffusionSize=get(diffusionSize);s.duck=get(duck)*.01f;s.inputDuck=get(duckMode)>.5f;s.duckRate=static_cast<int>(get(duckRate));
     s.glitch=static_cast<Glitch>(static_cast<int>(get(glitch)));s.glitchRate=static_cast<int>(get(glitchRate));s.glitchAmount=get(glitchAmount)*.01f;
     s.mix=get(mix)*.01f;s.width=get(width)*.01f;s.outputDb=get(output);
     for(int i=0;i<tapCount;++i){const int p=baseCount+i*4;s.taps[static_cast<std::size_t>(i)]={get(p)>.5f,static_cast<int>(get(p+1)),get(p+2)*.01f,get(p+3)*.01f};}

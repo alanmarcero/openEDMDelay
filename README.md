@@ -2,7 +2,7 @@
 
 An eight-tap, beat-synced delay. Routing is stereo, ping-pong, or mono. Characters are digital, tape, BBD, and lo-fi.
 
-![openEDMDelay native plugin editor](docs/screenshots/openEDMDelay.png)
+![openEDMDelay native plugin editor with Tape wobble controls](docs/screenshots/openEDMDelay.png)
 
 [Download](https://github.com/alanmarcero/openEDMDelay/releases/latest) · [OpenVST Manager](https://github.com/alanmarcero/alan-m-OpenVSTManager) · [Research notes](docs/research.md)
 
@@ -10,11 +10,12 @@ An eight-tap, beat-synced delay. Routing is stereo, ping-pong, or mono. Characte
 
 - Eight taps with individual enable, grid position, level and stereo pan. Drag the tap field horizontally to change time, vertically to change level, or right-click to mute.
 - Stereo, Ping Pong and Mono routing. Ping Pong alternates tap sides and crossfeeds successive phrase repeats; Stereo uses each tap's pan.
-- Digital, Tape, BBD and Lo-fi characters. Tape adds saturation, beat-related wow/flutter and pitch glide during timing changes. Other characters crossfade time changes over 25 ms.
+- Digital, Tape, BBD and Lo-fi characters. Tape adds saturation and pitch glide during timing changes. Motion sets wow depth; Wobble Rate (0.05–8 Hz) and five waveforms shape its movement. Other characters crossfade time changes over 25 ms.
 - Twelve rhythm templates, including paired 1+1, 2+1, 3+2, 3+4 and 3+5 patterns, plus eight-tap sequences. Thirty-six EDM factory programs cover trance, techno, house, drum and bass, hardstyle, garage, and rave.
 - Sixteen straight, dotted and triplet grid divisions range from 1/32 to a dotted whole note (six beats). Each tap can land on steps 1–16, for phrases up to 96 beats. Delay, beat duck, and glitch grids use the host tempo when available. There is no millisecond delay mode.
 - Feedback repeats the entire phrase, using the last active tap as its length. Decay progressively reduces later tap levels. Tap levels are normalized to keep dense patterns manageable.
 - High-pass and low-pass filters in the feedback loop, each with Off, 6, 12, 24 or 48 dB/oct slopes. Echoes pass through the filters again on each phrase repeat.
+- Feedback-loop diffusion with Amount and Size (2–30 ms). It smears each repeat progressively; shorter settings stay compact and longer settings make denser, more reverb-like tails. Diffusion is off by default.
 - Wet-only ducking from the beat or the input envelope. The Duck rate controls beat repetition or input-follower recovery.
 - Wet-only Gate, Stutter and Reverse effects with their own beat rate and mix. Stutter and Reverse replay the preceding slice and need history to fill before producing sound.
 - Mix, stereo width, output gain, bypass, host automation and session recall. Mono and stereo buses; zero added dry-path latency.
@@ -25,7 +26,7 @@ Drive applies to Tape and BBD; Motion applies to Tape. Tap pan applies to Stereo
 
 ![openEDMDelay Broken Transmission program in the native editor](docs/screenshots/openEDMDelay-glitch.png)
 
-![openEDMDelay tap performance, groove, filters, and hold controls](docs/screenshots/openEDMDelay-performance.png)
+![openEDMDelay tap performance, groove, filters, hold, and diffusion controls](docs/screenshots/openEDMDelay-performance.png)
 
 These are captures of the compiled JUCE editor, taken by the integration test with a simulated 128 BPM host. The tape illustration is original generated artwork embedded in that editor.
 
@@ -33,7 +34,7 @@ Each tap also has a Chance control (0–100%), 1–8 evenly spaced ratchets acro
 
 Swing delays every second grid step by up to half a unit. Groove selects Manual swing, Shuffle (25% offbeat delay), or Broken (four-step timing offsets). Pattern morph interpolates each tap's current step toward its editable Target step; tap enable, level and pan stay as set. Tape glides between timings; other characters crossfade.
 
-Feedback hold stops admitting new input and recirculates the phrase at unity gain, bypassing feedback colour and filtering while held. The held loop length is captured on engagement and rounded to a sample to avoid interpolation loss. Hold transitions are smoothed; release restores normal feedback and incoming audio. Bypass and reset clear the held phrase. All performance controls support host automation and session recall; scroll to the bottom panel to select which tap to edit. The editor opens at 1216 × 850 and resizes down to 900 × 600; scrollbars keep every control reachable. Older sessions restore with these additions neutral.
+Feedback hold stops admitting new input and recirculates the phrase at unity gain, bypassing feedback colour and filtering while held. The held loop length is captured on engagement and rounded to a sample to avoid interpolation loss. Hold transitions are smoothed; release restores normal feedback and incoming audio. Bypass and reset clear the held phrase. Style and performance controls support host automation and session recall; scroll to the bottom panels to select a tap or adjust diffusion. The editor opens at 1216 × 850 and resizes down to 900 × 600; scrollbars keep every control reachable. Older sessions restore with diffusion off and keep their saved Motion amount; Wobble defaults to a 0.5 Hz sine.
 
 ## Install
 
@@ -75,6 +76,6 @@ CI builds all three platforms, runs DSP and native integration tests, validates 
 
 The core preallocates enough delay history for approximately 96 seconds of history: approximately 42 MB at 48 kHz, scaling with sample rate. Timing reads, including swing, ratchets and morph targets, clamp to that history limit at long divisions and slow tempos. It allocates no buffers while processing. Continuous level controls are smoothed. Reset and bypass invalidate history so old echoes do not return. Feedback storage is bounded; the output gain can still produce peaks above 0 dBFS.
 
-These are original algorithms inspired by the documented workflows of Vengeance Essential FX Delay, Waves SuperTap/H-Delay and Access Virus. They are not bit-accurate hardware emulations or compatible with Virus presets. [Research notes](docs/research.md) link the primary sources and explain the differences. The current version uses the main input for input ducking; it has no external sidechain bus.
+These are original algorithms informed by the documented workflows of Vengeance Essential FX Delay, Waves SuperTap/H-Delay, Access Virus, and Soundtoys EchoBoy. They are not bit-accurate hardware emulations or compatible with Virus presets. [Research notes](docs/research.md) link the primary sources and explain the differences. The current version uses the main input for input ducking; it has no external sidechain bus.
 
 Source: AGPL-3.0. See [LICENSE](LICENSE) and [third-party notices](THIRD_PARTY.md).

@@ -132,6 +132,37 @@ void grooveMorph() {
     s.groove=0;s.taps[0].morphStep=4;s.morph=.5f;
     Render morph;morph.l[0]=1;morph.run(s);check(morph.l[12000]>.99f,"Pattern morph misses midpoint");
 }
+void diffusion() {
+    auto s=clean();s.rate=0;
+    Render plain(8000,10000),diffuse(8000,10000);
+    plain.l[0]=diffuse.l[0]=1;plain.run(s);
+    s.diffusion=.8f;s.diffusionSize=12;diffuse.l[0]=1;diffuse.run(s);
+    const auto spread=std::count_if(diffuse.l.begin()+501,diffuse.l.begin()+700,[](float v){return std::abs(v)>.001f;});
+    check(spread>3&&plain.l!=diffuse.l,"Diffusion does not smear the echo");
+    s.diffusionSize=24;Render larger(8000,10000);larger.l[0]=1;larger.run(s);
+    check(larger.l!=diffuse.l,"Diffusion size has no effect");
+}
+void wobbleRate() {
+    auto s=clean();s.character=Character::tape;s.motion=1;s.drive=0;
+    Render slow(8000,12000),fast(8000,12000);
+    for(std::size_t i=0;i<slow.l.size();++i)slow.l[i]=fast.l[i]=std::sin(static_cast<float>(i)*.071f)*.3f;
+    s.wobbleRate=.25f;slow.run(s);
+    s.wobbleRate=2.f;fast.run(s);
+    check(slow.l!=fast.l,"Wobble rate does not change tape modulation");
+}
+void wobbleShape() {
+    auto s=clean();s.character=Character::tape;s.motion=1;s.drive=0;s.wobbleRate=1.3f;
+    Render sine(8000,12000),square(8000,12000);
+    for(std::size_t i=0;i<sine.l.size();++i)sine.l[i]=square.l[i]=std::sin(static_cast<float>(i)*.071f)*.3f;
+    s.wobbleShape=WobbleShape::sine;sine.run(s,120,127);
+    s.wobbleShape=WobbleShape::square;square.run(s,120,511);
+    check(sine.l!=square.l,"Wobble shape does not change tape modulation");
+    Render walkA(8000,12000),walkB(8000,12000),sampleHold(8000,12000);
+    for(std::size_t i=0;i<walkA.l.size();++i)walkA.l[i]=walkB.l[i]=sampleHold.l[i]=std::sin(static_cast<float>(i)*.071f)*.3f;
+    s.wobbleShape=WobbleShape::randomWalk;walkA.run(s,120,127);walkB.run(s,120,511);
+    s.wobbleShape=WobbleShape::sampleHold;sampleHold.run(s,120,127);
+    check(walkA.l==walkB.l&&walkA.l!=sampleHold.l,"Random wobble depends on block size or shape");
+}
 void freezeLoop() {
     auto s=clean();s.freeze=true;Render empty;empty.l[0]=1;empty.run(s);check(energy(empty.l)==0,"Freeze admits fresh input");
     Render held(8000,32000);held.l[0]=.5f;
@@ -163,7 +194,7 @@ void settledHoldInput() {
 }
 int main() {
     int failed=0;
-    const std::pair<const char*,void(*)()> cases[]={{"sustained settled hold",sustainedHold},{"settled hold input rejection",settledHoldInput},{"tap probability/ratchets",tapPerformance},{"tap tone",tapTone},{"groove/morph",grooveMorph},{"freeze",freezeLoop},{"fast timing automation",fastTimeAutomation},{"stutter seams",stutterEdges},{"filter automation",filterAutomation},{"extended host-synced grid",extendedGridTiming},{"beat timing",timing},{"routing",routing},{"taps",taps},{"dry/reset",dryAndReset},{"filters",filters},{"effects",effects},{"stability/block size",stable}};
+    const std::pair<const char*,void(*)()> cases[]={{"sustained settled hold",sustainedHold},{"settled hold input rejection",settledHoldInput},{"tap probability/ratchets",tapPerformance},{"tap tone",tapTone},{"groove/morph",grooveMorph},{"diffusion",diffusion},{"wobble rate",wobbleRate},{"wobble shape",wobbleShape},{"freeze",freezeLoop},{"fast timing automation",fastTimeAutomation},{"stutter seams",stutterEdges},{"filter automation",filterAutomation},{"extended host-synced grid",extendedGridTiming},{"beat timing",timing},{"routing",routing},{"taps",taps},{"dry/reset",dryAndReset},{"filters",filters},{"effects",effects},{"stability/block size",stable}};
     for(const auto& [name,test]:cases)try{test();std::cout<<"PASS "<<name<<'\n';}catch(const std::exception& e){++failed;std::cerr<<"FAIL "<<name<<": "<<e.what()<<'\n';}
     return failed?1:0;
 }
