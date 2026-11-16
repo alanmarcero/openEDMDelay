@@ -1,6 +1,6 @@
 # Verification
 
-Native source version: 1.1.1. The EchoBoy-inspired changes below are local and unreleased.
+Native source version: 1.2.0. The EchoBoy-inspired features are included in this release.
 
 ## Local macOS
 

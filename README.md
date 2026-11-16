@@ -1,4 +1,4 @@
-# openEDMDelay
+# openEDMDelay v1.2.0
 
 An eight-tap, beat-synced delay. Routing is stereo, ping-pong, or mono. Characters are digital, tape, BBD, and lo-fi.
 
