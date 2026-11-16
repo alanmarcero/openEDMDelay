@@ -50,7 +50,10 @@ double DelayProcessor::getTailLengthSeconds()const {
     if(s.freeze)return 86400.;
     const double unit=beatRates[static_cast<std::size_t>(s.rate)]*60/std::max(20.,displayedBpm.load());
     const double repeats=s.feedback>0?std::ceil(std::log(.0001)/std::log(s.feedback)):0;
-    return unit*(latest+last*repeats)+filterTail;
+    const double diffusionCoefficient=diffusionStageFeedback*s.diffusion;
+    const double diffusionRepeats=diffusionCoefficient>0?std::ceil(std::log(.0001)/std::log(diffusionCoefficient)):0;
+    const double diffusionTail=s.diffusion>0?s.diffusionSize*.001*diffusionStageLengths.back()*diffusionRepeats:0;
+    return unit*(latest+last*repeats)+filterTail+diffusionTail;
 }
 juce::AudioProcessorParameter* DelayProcessor::getBypassParameter()const{return parameters.getParameter("bypass");}
 juce::AudioProcessorEditor* DelayProcessor::createEditor(){return new DelayEditor(*this);}

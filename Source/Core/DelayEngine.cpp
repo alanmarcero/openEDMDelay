@@ -11,6 +11,25 @@ float finite(float x) {return std::isfinite(x)?x:0.f;}
 float clamp(float x,float lo,float hi) {return std::clamp(finite(x),lo,hi);}
 double rate(int i) {return beatRates[static_cast<std::size_t>(std::clamp(i,0,static_cast<int>(beatRates.size())-1))];}
 double fraction(double x) {return x-std::floor(x);}
+float wobbleNoise(std::uint64_t step) {
+    std::uint32_t value=static_cast<std::uint32_t>(step)^static_cast<std::uint32_t>(step>>32)*0x9e3779b9u;
+    value^=value>>16;value*=0x7feb352du;value^=value>>15;value*=0x846ca68bu;value^=value>>16;
+    return static_cast<float>(value/2147483647.5-1.0);
+}
+float wobbleWave(double phase,WobbleShape shape) {
+    const double position=fraction(phase);
+    switch(shape) {
+        case WobbleShape::triangle:return static_cast<float>(position<.5?4*position-1:3-4*position);
+        case WobbleShape::square:return position<.5?-1.f:1.f;
+        case WobbleShape::randomWalk: {
+            const auto step=static_cast<std::uint64_t>(std::floor(phase));
+            const float from=wobbleNoise(step),to=wobbleNoise(step+1);
+            return from+(to-from)*static_cast<float>(position);
+        }
+        case WobbleShape::sampleHold:return wobbleNoise(static_cast<std::uint64_t>(std::floor(phase)));
+        default:return static_cast<float>(std::sin(2*pi*position));
+    }
+}
 }
 void DelayEngine::Filter::clear() {stages={};oldStages={};primed=false;fade=0;}
 void DelayEngine::Filter::coefficients() {
@@ -52,14 +71,17 @@ void DelayEngine::prepare(double sr) {
     // Existing history limit; read() bounds timing offsets to this storage.
     for(auto& buffer:ring)buffer.assign(static_cast<std::size_t>(sampleRate*96.1)+4,0);
     for(auto& buffer:wetHistory)buffer.assign(static_cast<std::size_t>(sampleRate*12.1)+4,0);
+    for(auto& channel:diffusionHistory)for(auto& stage:channel)stage.assign(static_cast<std::size_t>(sampleRate*.08)+4,0);
     reset();
 }
 void DelayEngine::reset() {
     write=wetWrite=capture=valid=wetValid=0;phase=0;lastSlice=-1;initialized=false;
+    diffusionWrite=0;wobblePhase=0;diffusion=0;diffusionSize=12;
     envelope=0;lastDuck=1;tone={};held={};holdCounter=0;transition=0;
     for(auto& f:hp)f.clear();for(auto& f:lp)f.clear();
     for(auto& pair:tapHp)for(auto& f:pair)f.clear();
     for(auto& pair:tapLp)for(auto& f:pair)f.clear();
+    for(auto& channel:diffusionHistory)for(auto& stage:channel)std::fill(stage.begin(),stage.end(),0.f);
     tapTone={};freezeMix=0;wasFrozen=false;frozenLoop=1;
 }
 float DelayEngine::read(const std::vector<float>& buffer,double time) const {
@@ -107,11 +129,12 @@ void DelayEngine::process(float* left,float* right,int frames,const Settings& s,
     const float targetOutput=std::pow(10.f,clamp(s.outputDb,-24,12)/20),targetDuck=clamp(s.duck,0,1);
     const float targetGlitch=s.glitch==Glitch::off?0:clamp(s.glitchAmount,0,1);
     const float targetDrive=clamp(s.drive,0,1),targetMotion=clamp(s.motion,0,1);
+    const float targetDiffusion=clamp(s.diffusion,0,1),targetDiffusionSize=clamp(s.diffusionSize,2,30);
     const int fadeLength=std::max(1,static_cast<int>(sampleRate*.025));
     if(!initialized) {
         delay=oldDelay=tapeDelay=nextDelay;previousLoop=oldLoop=tapeLoop=loop;gain=targetGain;pan=targetPan;
         feedback=targetFeedback;mix=targetMix;width=targetWidth;output=targetOutput;duck=targetDuck;
-        glitchMix=targetGlitch;drive=targetDrive;motion=targetMotion;freezeMix=s.freeze?1.f:0.f;initialized=true;
+        glitchMix=targetGlitch;drive=targetDrive;motion=targetMotion;diffusion=targetDiffusion;diffusionSize=targetDiffusionSize;freezeMix=s.freeze?1.f:0.f;initialized=true;
     } else if(transition==0 && (nextDelay!=delay||std::abs(loop-previousLoop)>.00001)) {
         oldDelay=delay;oldLoop=previousLoop;delay=nextDelay;previousLoop=loop;transition=fadeLength;
     }
@@ -131,10 +154,11 @@ void DelayEngine::process(float* left,float* right,int frames,const Settings& s,
         approach(freezeMix,freezeTarget);
         if(std::abs(freezeMix-freezeTarget)<=freezeTolerance)freezeMix=freezeTarget;
         approach(duck,targetDuck);approach(glitchMix,targetGlitch);approach(drive,targetDrive);approach(motion,targetMotion);
+        approach(diffusion,targetDiffusion);approach(diffusionSize,targetDiffusionSize);
         const float blend=transition>0?1-static_cast<float>(transition)/fadeLength:1;
         const bool tape=s.character==Character::tape;
         tapeLoop+=(loop-tapeLoop)*tapeSmooth;
-        const double wobble=tape?motion*sampleRate*.0015*(std::sin(phase*pi*.5)+.18*std::sin(phase*pi*14)):0;
+        const double wobble=tape?motion*sampleRate*.0015*(wobbleWave(wobblePhase,s.wobbleShape)+.18*std::sin(2*pi*wobblePhase*28)):0;
         const auto delayed=[&](int ch,double newer,double older,double gliding) {
             const auto& buffer=ring[static_cast<std::size_t>(ch)];
             if(tape)return read(buffer,gliding+wobble);
@@ -206,9 +230,21 @@ void DelayEngine::process(float* left,float* right,int frames,const Settings& s,
             }
             v=lp[ch].tick(hp[ch].tick(v));
             // Bound the feedback storage without clipping the dry branch.
-            ring[ch][write]=clamp(freezeMix>=1?feed[ch]:v+(feed[ch]-v)*freezeMix,-4,4);
+            float stored=clamp(freezeMix>=1?feed[ch]:v+(feed[ch]-v)*freezeMix,-4,4);
+            if(freezeMix<1&&diffusion>1.e-4f) {
+                const float coefficient=diffusionStageFeedback*diffusion;
+                for(std::size_t stage=0;stage<diffusionStageLengths.size();++stage) {
+                    auto& history=diffusionHistory[ch][stage];
+                    const auto delaySamples=static_cast<std::size_t>(std::clamp(std::round(sampleRate*diffusionSize*.001*diffusionStageLengths[stage]),1.,static_cast<double>(history.size()-2)));
+                    const auto readAt=(diffusionWrite+history.size()-delaySamples)%history.size();
+                    const float output=history[readAt]-coefficient*stored;
+                    history[diffusionWrite]=stored+coefficient*output;stored=output;
+                }
+            } else for(auto& history:diffusionHistory[ch])history[diffusionWrite]=stored;
+            ring[ch][write]=clamp(stored,-4,4);
         }
         write=(write+1)%ring[0].size();valid=std::min(valid+1,ring[0].size());
+        diffusionWrite=(diffusionWrite+1)%diffusionHistory[0][0].size();
         wetHistory[0][wetWrite]=wetL;wetHistory[1][wetWrite]=wetR;
         const double grid=phase/rate(s.glitchRate),slice=std::floor(grid+1.e-8),position=fraction(grid+1.e-8);
         if(slice!=lastSlice) {
@@ -239,7 +275,7 @@ void DelayEngine::process(float* left,float* right,int frames,const Settings& s,
         if(s.routing==Routing::mono)wetL=wetR=mid*lastDuck;
         if(right){left[i]=(dryL*(1-mix)+wetL*mix)*output;right[i]=(dryR*(1-mix)+wetR*mix)*output;}
         else left[i]=(dryL*(1-mix)+(wetL+wetR)*.5f*mix)*output;
-        phase+=increment;if(transition>0)--transition;
+        phase+=increment;wobblePhase+=clamp(s.wobbleRate,.05f,8.f)/sampleRate;if(transition>0)--transition;
     }
 }
 }
