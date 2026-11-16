@@ -3,7 +3,9 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 namespace oed {
 enum Param { gridRate, routing, character, feedback, decay, highPass, hpSlope, lowPass, lpSlope, drive, motion, duck, duckMode, duckRate, glitch, glitchRate, glitchAmount, mix, width, output, tempo, bypass, baseCount };
-constexpr int parameterCount=baseCount+tapCount*4;
+enum PerformanceParam { swing=baseCount+tapCount*4, groove, freeze, patternMorph, tapExtraStart };
+constexpr int tapExtraCount=8;
+constexpr int parameterCount=tapExtraStart+tapCount*tapExtraCount;
 struct ParameterSpec { juce::String id,name; float min,max,initial,skew; juce::String choices,unit; };
 const std::array<ParameterSpec,parameterCount>& parameterSpecs();
 juce::AudioProcessorValueTreeState::ParameterLayout makeLayout();

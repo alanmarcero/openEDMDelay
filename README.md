@@ -27,6 +27,12 @@ Drive applies to Tape and BBD; Motion applies to Tape. Tap pan applies to Stereo
 
 Both screenshots are captures of the compiled JUCE editor, taken by the integration test with a simulated 128 BPM host. The tape illustration is original generated artwork embedded in that editor.
 
+Each tap also has a Chance control (0–100%), 1–8 evenly spaced ratchets across one grid unit, optional 12 dB/oct high/low-pass filters, Digital/Tape/BBD/Lo-fi colour and drive. These shape the tap output after the global feedback character. Ratchets divide the tap level to retain headroom. Chance is deterministic per source phrase and tap, so playback and host seeks reproduce the same decisions.
+
+Swing delays every second grid step by up to half a unit. Groove selects Manual swing, Shuffle (25% offbeat delay), or Broken (four-step timing offsets). Pattern morph interpolates each tap's current step toward its editable Target step; tap enable, level and pan stay as set. Tape glides between timings; other characters crossfade.
+
+Feedback hold stops admitting new input and recirculates the phrase at unity gain, bypassing feedback colour and filtering while held. The held loop length is captured on engagement and rounded to a sample to avoid interpolation loss. Hold transitions are smoothed; release restores normal feedback and incoming audio. Bypass and reset clear the held phrase. All performance controls support host automation and session recall; the bottom panel selects which tap to edit. Older sessions restore with these additions neutral.
+
 ## Install
 
 OpenVST Manager discovers this plugin through its public catalog and installs the VST3 and available AU from the release ZIPs. You can also download and install manually:
@@ -65,7 +71,7 @@ CI builds all three platforms, runs DSP and native integration tests, validates 
 
 ## Design notes
 
-The core preallocates enough delay history for a 96-beat phrase at 20 BPM: approximately 42 MB at 48 kHz, scaling with sample rate. It allocates no buffers while processing. Continuous level controls are smoothed. Reset and bypass invalidate history so old echoes do not return. Feedback storage is bounded; the output gain can still produce peaks above 0 dBFS.
+The core preallocates enough delay history for approximately 96 seconds of history: approximately 42 MB at 48 kHz, scaling with sample rate. Timing reads, including swing, ratchets and morph targets, clamp to that history limit at long divisions and slow tempos. It allocates no buffers while processing. Continuous level controls are smoothed. Reset and bypass invalidate history so old echoes do not return. Feedback storage is bounded; the output gain can still produce peaks above 0 dBFS.
 
 These are original algorithms inspired by the documented workflows of Vengeance Essential FX Delay, Waves SuperTap/H-Delay and Access Virus. They are not bit-accurate hardware emulations or compatible with Virus presets. [Research notes](docs/research.md) link the primary sources and explain the differences. The current version uses the main input for input ducking; it has no external sidechain bus.
 

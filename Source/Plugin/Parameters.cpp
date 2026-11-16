@@ -37,6 +37,22 @@ const std::array<ParameterSpec,parameterCount>& parameterSpecs() {
             a[index+2]={prefix+"Level",title+"level",0,100,i==0?100.f:80.f,1,"","%"};
             a[index+3]={prefix+"Pan",title+"pan",-100,100,i%2?65.f:-65.f,1,"",""};
         }
+        a[swing]={"swing","Swing",0,100,0,1,"","%"};
+        a[groove]={"groove","Groove",0,2,0,1,"Manual swing|Shuffle|Broken",""};
+        a[freeze]={"freeze","Feedback hold",0,1,0,1,"Off|On",""};
+        a[patternMorph]={"patternMorph","Pattern morph",0,100,0,1,"","%"};
+        for(int i=0;i<tapCount;++i) {
+            const auto prefix="tap"+juce::String(i+1);const auto title="Tap "+juce::String(i+1)+" ";
+            const auto p=static_cast<std::size_t>(tapExtraStart+i*tapExtraCount);
+            a[p]={prefix+"Probability",title+"chance",0,100,100,1,"","%"};
+            a[p+1]={prefix+"Ratchets",title+"ratchets",0,7,0,1,"1|2|3|4|5|6|7|8",""};
+            a[p+2]={prefix+"Filter",title+"filter",0,1,0,1,"Off|On",""};
+            a[p+3]={prefix+"HighPass",title+"HP",20,20000,20,.25f,"","Hz"};
+            a[p+4]={prefix+"LowPass",title+"LP",20,20000,20000,.25f,"","Hz"};
+            a[p+5]={prefix+"Character",title+"colour",0,3,0,1,"Digital|Tape|BBD|Lo-fi",""};
+            a[p+6]={prefix+"Drive",title+"drive",0,100,25,1,"","%"};
+            a[p+7]={prefix+"MorphStep",title+"target",1,16,static_cast<float>(steps[i]),1,"",""};
+        }
         return a;
     }();return specs;
 }
@@ -44,10 +60,10 @@ juce::AudioProcessorValueTreeState::ParameterLayout makeLayout() {
     juce::AudioProcessorValueTreeState::ParameterLayout layout;
     for(std::size_t i=0;i<parameterSpecs().size();++i) {
         const auto& s=parameterSpecs()[i];const juce::ParameterID id{s.id,1};
-        if(i==bypass|| (i>=baseCount&&(i-baseCount)%4==0))layout.add(std::make_unique<juce::AudioParameterBool>(id,s.name,s.initial>.5f));
+        if(i==bypass|| (i>=baseCount&&i<swing&&(i-baseCount)%4==0))layout.add(std::make_unique<juce::AudioParameterBool>(id,s.name,s.initial>.5f));
         else if(s.choices.isNotEmpty())layout.add(std::make_unique<juce::AudioParameterChoice>(id,s.name,juce::StringArray::fromTokens(s.choices,"|",""),static_cast<int>(s.initial)));
         else {
-            const float interval=(i>=baseCount&&(i-baseCount)%4==1)?1.f:.01f;
+            const float interval=(s.id.endsWith("Step"))?1.f:.01f;
             juce::NormalisableRange<float> range{s.min,s.max,interval,s.skew};
             layout.add(std::make_unique<juce::AudioParameterFloat>(id,s.name,range,s.initial,juce::AudioParameterFloatAttributes{}.withLabel(s.unit)));
         }
@@ -55,12 +71,17 @@ juce::AudioProcessorValueTreeState::ParameterLayout makeLayout() {
 }
 Settings readSettings(const ParameterValues& v) {
     const auto get=[&](int p){return v[static_cast<std::size_t>(p)]->load(std::memory_order_relaxed);};
-    Settings s;s.rate=static_cast<int>(get(gridRate));s.routing=static_cast<Routing>(static_cast<int>(get(routing)));s.character=static_cast<Character>(static_cast<int>(get(character)));
+    Settings s;s.swing=get(swing)*.01f;s.groove=static_cast<int>(get(groove));s.freeze=get(freeze)>.5f;s.morph=get(patternMorph)*.01f;s.rate=static_cast<int>(get(gridRate));s.routing=static_cast<Routing>(static_cast<int>(get(routing)));s.character=static_cast<Character>(static_cast<int>(get(character)));
     s.feedback=get(feedback)*.01f;s.decay=get(decay)*.01f;s.highPass=get(highPass);s.lowPass=get(lowPass);s.hpSlope=static_cast<int>(get(hpSlope));s.lpSlope=static_cast<int>(get(lpSlope));
     s.drive=get(drive)*.01f;s.motion=get(motion)*.01f;s.duck=get(duck)*.01f;s.inputDuck=get(duckMode)>.5f;s.duckRate=static_cast<int>(get(duckRate));
     s.glitch=static_cast<Glitch>(static_cast<int>(get(glitch)));s.glitchRate=static_cast<int>(get(glitchRate));s.glitchAmount=get(glitchAmount)*.01f;
     s.mix=get(mix)*.01f;s.width=get(width)*.01f;s.outputDb=get(output);
     for(int i=0;i<tapCount;++i){const int p=baseCount+i*4;s.taps[static_cast<std::size_t>(i)]={get(p)>.5f,static_cast<int>(get(p+1)),get(p+2)*.01f,get(p+3)*.01f};}
+    for(int i=0;i<tapCount;++i) {
+        const int p=tapExtraStart+i*tapExtraCount;auto& tap=s.taps[static_cast<std::size_t>(i)];
+        tap.probability=get(p)*.01f;tap.ratchets=static_cast<int>(get(p+1))+1;tap.filter=get(p+2)>.5f;
+        tap.highPass=get(p+3);tap.lowPass=get(p+4);tap.character=static_cast<int>(get(p+5));tap.drive=get(p+6)*.01f;tap.morphStep=static_cast<int>(get(p+7));
+    }
     return s;
 }
 }

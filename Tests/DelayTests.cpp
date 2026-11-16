@@ -106,9 +106,43 @@ void filterAutomation() {
     x.engine.process(x.l.data()+8000,x.r.data()+8000,4000,s,{120,2,true});
     for(int i=8500;i<9000;++i)check(std::abs(x.l[static_cast<std::size_t>(i)]-x.l[static_cast<std::size_t>(i-1)])<.03f,"Cutoff automation clicks");
 }
+void tapPerformance() {
+    auto s=clean();s.taps[0].probability=0;
+    Render muted;muted.l[0]=1;muted.run(s);check(energy(muted.l)==0,"Zero probability leaks echoes");
+    s.taps[0].probability=1;s.taps[0].ratchets=4;
+    Render rolls;rolls.l[0]=1;rolls.run(s);
+    for(int at:{4000,5000,6000,7000})check(std::abs(rolls.l[static_cast<std::size_t>(at)]-.25f)<.001f,"Ratchet timing/normalization wrong");
+    s.taps[0].probability=.5f;Render a,b;
+    for(int i=0;i<24000;i+=1000)a.l[static_cast<std::size_t>(i)]=b.l[static_cast<std::size_t>(i)]=.5f;
+    Render certain;certain.l=a.l;auto always=s;always.taps[0].probability=1;certain.run(always);
+    a.run(s,120,1);b.run(s,120,511);check(a.l==b.l,"Probability depends on block size");
+    check(energy(a.l)>0&&energy(a.l)<energy(certain.l),"Fractional probability does not select phrases");
+}
+void tapTone() {
+    auto s=clean();Render plain;plain.l[0]=1;plain.run(s);
+    s.taps[0].lowPass=200;s.taps[0].filter=true;Render filtered;filtered.l[0]=1;filtered.run(s);
+    check(energy(filtered.l)<energy(plain.l)*.3,"Per-tap low pass ineffective");
+    s.taps[0].filter=false;s.taps[0].character=3;Render dirty;dirty.l[0]=.123f;dirty.run(s);
+    check(std::abs(dirty.l[4000]-.123f)>.001,"Tap character ineffective");
+}
+void grooveMorph() {
+    auto s=clean();s.taps[0].step=2;s.swing=.5f;
+    Render swing;swing.l[0]=1;swing.run(s);check(swing.l[9000]>.99f,"Swing misses offbeat");
+    s.swing=0;s.groove=1;Render groove;groove.l[0]=1;groove.run(s);check(groove.l[9000]>.99f,"Groove template ineffective");
+    s.groove=0;s.taps[0].morphStep=4;s.morph=.5f;
+    Render morph;morph.l[0]=1;morph.run(s);check(morph.l[12000]>.99f,"Pattern morph misses midpoint");
+}
+void freezeLoop() {
+    auto s=clean();s.freeze=true;Render empty;empty.l[0]=1;empty.run(s);check(energy(empty.l)==0,"Freeze admits fresh input");
+    Render held(8000,32000);held.l[0]=.5f;
+    held.engine.process(held.l.data(),held.r.data(),2000,s=clean(),{120,0,true});
+    s.freeze=true;held.engine.process(held.l.data()+2000,held.r.data()+2000,30000,s,{120,.5,true});
+    check(held.l[28000]>.49f,"Frozen phrase decays");
+    held.engine.reset();std::fill(held.l.begin(),held.l.end(),0);held.run(s);check(energy(held.l)==0,"Reset preserves frozen history");
+}
 int main() {
     int failed=0;
-    const std::pair<const char*,void(*)()> cases[]={{"fast timing automation",fastTimeAutomation},{"stutter seams",stutterEdges},{"filter automation",filterAutomation},{"extended host-synced grid",extendedGridTiming},{"beat timing",timing},{"routing",routing},{"taps",taps},{"dry/reset",dryAndReset},{"filters",filters},{"effects",effects},{"stability/block size",stable}};
+    const std::pair<const char*,void(*)()> cases[]={{"tap probability/ratchets",tapPerformance},{"tap tone",tapTone},{"groove/morph",grooveMorph},{"freeze",freezeLoop},{"fast timing automation",fastTimeAutomation},{"stutter seams",stutterEdges},{"filter automation",filterAutomation},{"extended host-synced grid",extendedGridTiming},{"beat timing",timing},{"routing",routing},{"taps",taps},{"dry/reset",dryAndReset},{"filters",filters},{"effects",effects},{"stability/block size",stable}};
     for(const auto& [name,test]:cases)try{test();std::cout<<"PASS "<<name<<'\n';}catch(const std::exception& e){++failed;std::cerr<<"FAIL "<<name<<": "<<e.what()<<'\n';}
     return failed?1:0;
 }

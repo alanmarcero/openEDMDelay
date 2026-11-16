@@ -31,7 +31,26 @@ void malformedState(){
         require(p.values[mix]->load()==73,"Malformed parameter state was accepted");
     }
 }
-void recall(){DelayProcessor p;for(int i=0;i<parameterCount;++i){const auto& s=parameterSpecs()[static_cast<std::size_t>(i)];p.setPlainValue(i,s.min+(s.max-s.min)*.73f);}juce::MemoryBlock state;p.getStateInformation(state);DelayProcessor restored;restored.setStateInformation(state.getData(),static_cast<int>(state.getSize()));for(int i=0;i<parameterCount;++i)require(p.values[static_cast<std::size_t>(i)]->load()==restored.values[static_cast<std::size_t>(i)]->load(),"Session state loses parameter");restored.setStateInformation("invalid",7);require(restored.values[mix]->load()==p.values[mix]->load(),"Malformed state resets parameters");}
+static void legacyAndPerformanceState(){
+    DelayProcessor p;auto legacy=p.parameters.copyState();
+    for(int i=legacy.getNumChildren();--i>=0;) {
+        const auto id=legacy.getChild(i).getProperty("id").toString();
+        bool original=false;for(int j=0;j<baseCount+tapCount*4;++j)original=original||parameterSpecs()[static_cast<std::size_t>(j)].id==id;
+        if(!original)legacy.removeChild(i,nullptr);
+        else if(id=="mix")legacy.getChild(i).setProperty("value",73,nullptr);
+    }
+    juce::MemoryBlock block;auto xml=legacy.createXml();juce::AudioProcessor::copyXmlToBinary(*xml,block);
+    p.setPlainValue(mix,15);p.setStateInformation(block.getData(),static_cast<int>(block.getSize()));
+    require(std::abs(p.values[mix]->load()-73)<.0001f,"Legacy state rejected after adding parameters");
+    p.setPlainValue(swing,50);p.setPlainValue(patternMorph,75);p.setPlainValue(freeze,1);
+    p.setPlainValue(tapExtraStart,35);p.setPlainValue(tapExtraStart+1,3);
+    const auto settings=p.settings();
+    require(settings.swing==.5f&&settings.morph==.75f&&settings.freeze,"Performance parameters disconnected");
+    require(std::abs(settings.taps[0].probability-.35f)<.0001f&&settings.taps[0].ratchets==4,"Tap performance parameters disconnected");
+    clean(p);p.setPlainValue(tapExtraStart+7,16);p.setPlainValue(patternMorph,100);
+    require(p.getTailLengthSeconds()>=8,"Host tail excludes morphed pattern");
+}
+void recall(){legacyAndPerformanceState();DelayProcessor p;for(int i=0;i<parameterCount;++i){const auto& s=parameterSpecs()[static_cast<std::size_t>(i)];p.setPlainValue(i,s.min+(s.max-s.min)*.73f);}juce::MemoryBlock state;p.getStateInformation(state);DelayProcessor restored;restored.setStateInformation(state.getData(),static_cast<int>(state.getSize()));for(int i=0;i<parameterCount;++i)require(p.values[static_cast<std::size_t>(i)]->load()==restored.values[static_cast<std::size_t>(i)]->load(),"Session state loses parameter");restored.setStateInformation("invalid",7);require(restored.values[mix]->load()==p.values[mix]->load(),"Malformed state resets parameters");}
 juce::Component* find(juce::Component& root,const juce::String& id){if(root.getComponentID()==id)return &root;for(auto* c:root.getChildren())if(auto* result=find(*c,id))return result;return nullptr;}
 void ui(const juce::File& destination){
     DelayProcessor p;p.prepareToPlay(48000,256);std::unique_ptr<juce::AudioProcessorEditor> e(p.createEditor());

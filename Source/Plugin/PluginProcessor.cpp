@@ -36,10 +36,19 @@ void DelayProcessor::processBlockBypassed(juce::AudioBuffer<float>&,juce::MidiBu
     if(!wasBypassed){engine.reset();wasBypassed=true;}duckMeter.store(1);outputPeak.store(0);
 }
 double DelayProcessor::getTailLengthSeconds()const {
-    const auto s=settings();int last=0;for(const auto& tap:s.taps)if(tap.enabled&&tap.level>0)last=std::max(last,tap.step);
-    if(last==0)return 0;
-    const double seconds=last*beatRates[static_cast<std::size_t>(s.rate)]*60/std::max(20.,displayedBpm.load());
-    return seconds*(1+(s.feedback>0?std::ceil(std::log(.0001)/std::log(s.feedback)):0));
+    const auto s=settings();double last=0,latest=0;
+    for(const auto& tap:s.taps)if(tap.enabled&&tap.level>0) {
+        double step=static_cast<double>(tap.step)+(static_cast<double>(tap.morphStep)-tap.step)*s.morph;
+        const int index=static_cast<int>(std::round(step))-1;
+        if(s.groove==2) {constexpr double offsets[]{0,.12,-.08,.18};step+=offsets[index%4];}
+        else if(index%2)step+=s.groove==1?.25:s.swing*.5;
+        last=std::max(last,step);latest=std::max(latest,step+1.-1./tap.ratchets);
+    }
+    if(last<=0)return 0;
+    if(s.freeze)return 86400.;
+    const double unit=beatRates[static_cast<std::size_t>(s.rate)]*60/std::max(20.,displayedBpm.load());
+    const double repeats=s.feedback>0?std::ceil(std::log(.0001)/std::log(s.feedback)):0;
+    return unit*(latest+last*repeats);
 }
 juce::AudioProcessorParameter* DelayProcessor::getBypassParameter()const{return parameters.getParameter("bypass");}
 juce::AudioProcessorEditor* DelayProcessor::createEditor(){return new DelayEditor(*this);}
@@ -129,7 +138,11 @@ void DelayProcessor::setStateInformation(const void* data,int size) {
                 if(!parser||!parser.eof()||!std::isfinite(number)||number<spec.min||number>spec.max)return;
                 if((spec.choices.isNotEmpty()||spec.id.endsWith("Step"))&&std::abs(number-std::round(number))>1.e-6)return;
             }
-            if(matches!=1)return;
+            if(matches==0) {
+                const auto index=static_cast<int>(&spec-parameterSpecs().data());
+                if(index<swing)return;
+                juce::ValueTree child("PARAM");child.setProperty("id",spec.id,nullptr);child.setProperty("value",spec.initial,nullptr);state.appendChild(child,nullptr);
+            } else if(matches!=1)return;
         }
         parameters.replaceState(state);program.store(juce::jlimit(0,35,static_cast<int>(state.getProperty("program",0))));resetPending.store(true);
     }
