@@ -10,10 +10,12 @@ constexpr std::array<double, 16> beatRates{
 enum class Routing { stereo, pingPong, mono };
 enum class Character { digital, tape, bbd, loFi };
 enum class Glitch { off, gate, stutter, reverse };
-struct Tap { bool enabled = false; int step = 1; float level = 1; float pan = 0; };
+struct Tap { bool enabled = false; int step = 1; float level = 1; float pan = 0; float probability = 1; int ratchets = 1; bool filter = false;
+    float highPass = 20, lowPass = 20000; int character = 0; float drive = .25f; int morphStep = 1; };
 struct Settings {
     std::array<Tap, tapCount> taps{{{true, 1, 1, 0}}};
     int rate = 7;
+    float swing = 0, morph = 0; int groove = 0; bool freeze = false;
     Routing routing = Routing::stereo;
     Character character = Character::digital;
     float feedback = .35f, decay = .3f, highPass = 120, lowPass = 9000;
@@ -47,6 +49,10 @@ private:
     double sampleRate=48000, phase=0, previousLoop=0, tapeLoop=0, oldLoop=0;
     std::array<std::vector<float>,2> ring, wetHistory;
     std::array<Filter,2> hp,lp;
+    std::array<std::array<Filter,2>,tapCount> tapHp,tapLp;
+    std::array<std::array<float,2>,tapCount> tapTone{};
+    float freezeMix=0;
+    double frozenLoop=1;bool wasFrozen=false;
     std::array<float,2> tone{}, held{};
     std::array<double,tapCount> delay{}, oldDelay{}, tapeDelay{};
     std::array<float,tapCount> gain{},pan{};

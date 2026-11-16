@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <cmath>
 #include <numbers>
+#include <cstdint>
 namespace oed {
 namespace {
 constexpr double pi=std::numbers::pi;
@@ -47,7 +48,7 @@ float DelayEngine::Filter::tick(float x) {
 }
 void DelayEngine::prepare(double sr) {
     sampleRate=std::isfinite(sr)&&sr>=8000?sr:48000;
-    // 16 steps * 6 beats * 60 / 20 BPM, plus interpolation/modulation margin.
+    // Existing history limit; read() bounds timing offsets to this storage.
     for(auto& buffer:ring)buffer.assign(static_cast<std::size_t>(sampleRate*96.1)+4,0);
     for(auto& buffer:wetHistory)buffer.assign(static_cast<std::size_t>(sampleRate*12.1)+4,0);
     reset();
@@ -56,6 +57,9 @@ void DelayEngine::reset() {
     write=wetWrite=capture=valid=wetValid=0;phase=0;lastSlice=-1;initialized=false;
     envelope=0;lastDuck=1;tone={};held={};holdCounter=0;transition=0;
     for(auto& f:hp)f.clear();for(auto& f:lp)f.clear();
+    for(auto& pair:tapHp)for(auto& f:pair)f.clear();
+    for(auto& pair:tapLp)for(auto& f:pair)f.clear();
+    tapTone={};freezeMix=0;wasFrozen=false;frozenLoop=1;
 }
 float DelayEngine::read(const std::vector<float>& buffer,double time) const {
     time=std::clamp(time,1.,static_cast<double>(buffer.size()-2));
@@ -71,18 +75,33 @@ void DelayEngine::process(float* left,float* right,int frames,const Settings& s,
     const double increment=1/beatSamples;
     if(t.hasPpq&&std::isfinite(t.ppq))phase=t.ppq;
     std::array<double,tapCount> nextDelay{};
-    std::array<float,tapCount> targetGain{},targetPan{};
-    int lastStep=1;float sum=0;
+    std::array<float,tapCount> targetGain{},targetPan{},tapToneCoefficient{};
+    double lastStep=1;float sum=0;
     for(std::size_t j=0;j<tapCount;++j) {
-        const auto& tap=s.taps[j];const int step=std::clamp(tap.step,1,16);
-        nextDelay[j]=unit*step;
+        const auto& tap=s.taps[j];
+        tapToneCoefficient[j]=static_cast<float>(1-std::exp(-2*pi*(tap.character==2?2600:6500)/sampleRate));
+        const int step=std::clamp(tap.step,1,16);
+        const double morphed=step+(std::clamp(tap.morphStep,1,16)-step)*clamp(s.morph,0,1);
+        const auto grooveOffset=[&](double position) {
+            const int index=static_cast<int>(std::round(position))-1;
+            if(s.groove==2) {constexpr double offsets[]{0,.12,-.08,.18};return offsets[index%4];}
+            const double amount=s.groove==1?.25:clamp(s.swing,0,1)*.5;
+            return index%2?amount:0.;
+        };
+        nextDelay[j]=unit*(morphed+grooveOffset(morphed));
+        for(std::size_t ch=0;ch<2;++ch) {
+            tapHp[j][ch].configure(sampleRate,tap.highPass,tap.filter?2:0,true);
+            tapLp[j][ch].configure(sampleRate,tap.lowPass,tap.filter?2:0,false);
+        }
         targetGain[j]=tap.enabled?clamp(tap.level,0,1)*std::exp(-4*clamp(s.decay,0,1)*(step-1)/15.f):0;
         targetPan[j]=clamp(tap.pan,-1,1);
-        if(tap.enabled&&tap.level>0)lastStep=std::max(lastStep,step);
+        if(tap.enabled&&tap.level>0)lastStep=std::max(lastStep,nextDelay[j]/unit);
         sum+=tap.enabled?clamp(tap.level,0,1):0;
     }
     for(auto& value:targetGain)value/=std::max(1.f,sum);
     const double loop=unit*lastStep;
+    if(s.freeze&&!wasFrozen)frozenLoop=std::round(loop);
+    wasFrozen=s.freeze;
     const float targetFeedback=clamp(s.feedback,0,.97f),targetMix=clamp(s.mix,0,1),targetWidth=clamp(s.width,0,1);
     const float targetOutput=std::pow(10.f,clamp(s.outputDb,-24,12)/20),targetDuck=clamp(s.duck,0,1);
     const float targetGlitch=s.glitch==Glitch::off?0:clamp(s.glitchAmount,0,1);
@@ -91,7 +110,7 @@ void DelayEngine::process(float* left,float* right,int frames,const Settings& s,
     if(!initialized) {
         delay=oldDelay=tapeDelay=nextDelay;previousLoop=oldLoop=tapeLoop=loop;gain=targetGain;pan=targetPan;
         feedback=targetFeedback;mix=targetMix;width=targetWidth;output=targetOutput;duck=targetDuck;
-        glitchMix=targetGlitch;drive=targetDrive;motion=targetMotion;initialized=true;
+        glitchMix=targetGlitch;drive=targetDrive;motion=targetMotion;freezeMix=s.freeze?1.f:0.f;initialized=true;
     } else if(transition==0 && (nextDelay!=delay||std::abs(loop-previousLoop)>.00001)) {
         oldDelay=delay;oldLoop=previousLoop;delay=nextDelay;previousLoop=loop;transition=fadeLength;
     }
@@ -105,6 +124,7 @@ void DelayEngine::process(float* left,float* right,int frames,const Settings& s,
         const float dryL=finite(left[i]),dryR=right?finite(right[i]):dryL;
         const auto approach=[smooth](float& value,float target){value+=(target-value)*smooth;};
         approach(feedback,targetFeedback);approach(mix,targetMix);approach(width,targetWidth);approach(output,targetOutput);
+        approach(freezeMix,s.freeze?1.f:0.f);
         approach(duck,targetDuck);approach(glitchMix,targetGlitch);approach(drive,targetDrive);approach(motion,targetMotion);
         const float blend=transition>0?1-static_cast<float>(transition)/fadeLength:1;
         const bool tape=s.character==Character::tape;
@@ -116,20 +136,49 @@ void DelayEngine::process(float* left,float* right,int frames,const Settings& s,
             const float a=read(buffer,newer);return transition>0?read(buffer,older)*(1-blend)+a*blend:a;
         };
         float fbL=delayed(0,previousLoop,oldLoop,tapeLoop),fbR=delayed(1,previousLoop,oldLoop,tapeLoop);
+        fbL+=(read(ring[0],frozenLoop)-fbL)*freezeMix;fbR+=(read(ring[1],frozenLoop)-fbR)*freezeMix;
         if(s.routing==Routing::pingPong)std::swap(fbL,fbR);
         float wetL=0,wetR=0;
         for(std::size_t j=0;j<tapCount;++j) {
             approach(gain[j],targetGain[j]);approach(pan[j],targetPan[j]);
             tapeDelay[j]+=(nextDelay[j]-tapeDelay[j])*tapeSmooth;
             if(gain[j]<1.e-7f)continue;
-            float l=delayed(0,delay[j],oldDelay[j],tapeDelay[j]),r=delayed(1,delay[j],oldDelay[j],tapeDelay[j]);
+            const auto& tap=s.taps[j];
+            const int repeats=std::clamp(tap.ratchets,1,8);
+            float l=0,r=0;
+            for(int repeat=0;repeat<repeats;++repeat) {
+                const double offset=unit*repeat/repeats;
+                const float chance=clamp(tap.probability,0,1);
+                if(chance<1) {
+                    // Hash the source phrase so decisions survive block changes and host seeks.
+                    const double phrase=std::floor((phase-(delay[j]+offset)/beatSamples)/ (loop/beatSamples)+1.e-7);
+                    std::uint32_t hash=static_cast<std::uint32_t>(std::fmod(std::abs(phrase),4294967295.));
+                    hash^=static_cast<std::uint32_t>(j+1)*0x9e3779b9u;hash^=hash>>16;hash*=0x7feb352du;hash^=hash>>15;
+                    if(static_cast<double>(hash)/4294967296.>=chance)continue;
+                }
+                l+=delayed(0,delay[j]+offset,oldDelay[j]+offset,tapeDelay[j]+offset)/repeats;
+                r+=delayed(1,delay[j]+offset,oldDelay[j]+offset,tapeDelay[j]+offset)/repeats;
+            }
+            std::array<float,2> shaped{l,r};
+            for(std::size_t ch=0;ch<2;++ch) {
+                float v=shaped[ch];
+                if(tap.character==3)v=std::round(v*64.f)/64.f;
+                else if(tap.character==1||tap.character==2) {
+                    const float amount=clamp(tap.drive,0,1);
+                    v=std::tanh(v*(1+4*amount))/(1+1.5f*amount);
+                    tapTone[j][ch]+=tapToneCoefficient[j]*(v-tapTone[j][ch]);v=tapTone[j][ch];
+                }
+                shaped[ch]=tapLp[j][ch].tick(tapHp[j][ch].tick(v));
+            }
+            l=shaped[0];r=shaped[1];
             if(s.routing==Routing::pingPong) {if(j%2)std::swap(l,r);}
             else if(s.routing==Routing::stereo){l*=1-std::max(0.f,pan[j]);r*=1+std::min(0.f,pan[j]);}
             wetL+=l*gain[j];wetR+=r*gain[j];
         }
         const float mono=(dryL+dryR)*.5f;
         std::array<float,2> feed{s.routing==Routing::stereo?dryL:mono,s.routing==Routing::stereo?dryR:(s.routing==Routing::mono?mono:0)};
-        feed[0]+=fbL*feedback;feed[1]+=fbR*feedback;
+        feed[0]*=1-freezeMix;feed[1]*=1-freezeMix;
+        feed[0]+=fbL*(feedback+(1-feedback)*freezeMix);feed[1]+=fbR*(feedback+(1-feedback)*freezeMix);
         const bool updateHold=holdCounter==0;
         holdCounter=(holdCounter+1)%std::max(1,static_cast<int>(sampleRate/12000));
         for(std::size_t ch=0;ch<2;++ch) {
@@ -150,7 +199,7 @@ void DelayEngine::process(float* left,float* right,int frames,const Settings& s,
             }
             v=lp[ch].tick(hp[ch].tick(v));
             // Bound the feedback storage without clipping the dry branch.
-            ring[ch][write]=clamp(v,-4,4);
+            ring[ch][write]=clamp(v+(feed[ch]-v)*freezeMix,-4,4);
         }
         write=(write+1)%ring[0].size();valid=std::min(valid+1,ring[0].size());
         wetHistory[0][wetWrite]=wetL;wetHistory[1][wetWrite]=wetR;

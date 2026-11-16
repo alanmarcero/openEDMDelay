@@ -97,14 +97,17 @@ DelayEditor::DelayEditor(DelayProcessor& p):AudioProcessorEditor(p),owner(p),gri
     addAndMakeVisible(nextPreset);
     pattern.addItemList(patternNames(),1);pattern.setTextWhenNothingSelected("Pattern / Custom");pattern.setTooltip("Load tap positions, levels and stereo pans. Grid rate and effects are preserved.");
     pattern.onChange=[this]{owner.applyPattern(pattern.getSelectedId()-1);};
-    setSize(1200,890);startTimerHz(24);
+    addAndMakeVisible(selectedTap);selectedTap.setComponentID("performanceTap");
+    for(int i=0;i<tapCount;++i)selectedTap.addItem("Edit tap "+juce::String(i+1),i+1);
+    selectedTap.setSelectedId(1,juce::dontSendNotification);selectedTap.onChange=[this]{resized();};
+    setSize(1200,1100);startTimerHz(24);
 }
 DelayEditor::~DelayEditor(){stopTimer();setLookAndFeel(nullptr);}
 void DelayEditor::makeControl(int i) {
     const auto& spec=parameterSpecs()[static_cast<std::size_t>(i)];
     const auto colour=i>=baseCount?accent((i-baseCount)/4):(i==highPass||i==hpSlope?theme::kAccentA:theme::kAccentB);
     auto label=std::make_unique<juce::Label>();label->setText(spec.name,juce::dontSendNotification);label->setJustificationType(juce::Justification::centred);label->setFont(juce::FontOptions(11.5f));label->setColour(juce::Label::textColourId,theme::kTextDim);addAndMakeVisible(*label);labels[static_cast<std::size_t>(i)]=std::move(label);
-    if(i==bypass||(i>=baseCount&&(i-baseCount)%4==0)) {
+    if(i==bypass||(i>=baseCount&&i<swing&&(i-baseCount)%4==0)) {
         auto c=std::make_unique<juce::TextButton>(i==bypass?"BYPASS":"TAP "+juce::String((i-baseCount)/4+1).paddedLeft('0',2));
         c->setClickingTogglesState(true);c->setColour(juce::TextButton::buttonOnColourId,i==bypass?theme::kAccentB:colour);
         c->setComponentID(spec.id);addAndMakeVisible(*c);buttons.push_back(std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(owner.parameters,spec.id,*c));controls[static_cast<std::size_t>(i)]=std::move(c);
@@ -112,7 +115,7 @@ void DelayEditor::makeControl(int i) {
         auto c=std::make_unique<juce::ComboBox>();c->addItemList(juce::StringArray::fromTokens(spec.choices,"|",""),1);c->setColour(juce::ComboBox::outlineColourId,colour);c->setComponentID(spec.id);addAndMakeVisible(*c);combos.push_back(std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(owner.parameters,spec.id,*c));controls[static_cast<std::size_t>(i)]=std::move(c);
     } else {
         auto c=std::make_unique<juce::Slider>();c->setLookAndFeel(&look);c->setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);c->setTextBoxStyle(juce::Slider::TextBoxBelow,false,86,22);c->setColour(juce::Slider::rotarySliderFillColourId,colour);c->setComponentID(spec.id);c->setDoubleClickReturnValue(true,spec.initial);
-        const bool step=i>=baseCount&&(i-baseCount)%4==1,pan=i>=baseCount&&(i-baseCount)%4==3;
+        const bool step=spec.id.endsWith("Step"),pan=i>=baseCount&&i<swing&&(i-baseCount)%4==3;
         if(step){c->setSliderStyle(juce::Slider::IncDecButtons);c->setTextBoxStyle(juce::Slider::TextBoxLeft,false,32,24);c->setIncDecButtonsMode(juce::Slider::incDecButtonsDraggable_Vertical);}
         if(i==drive||i==motion){c->setSliderStyle(juce::Slider::LinearHorizontal);c->setTextBoxStyle(juce::Slider::TextBoxRight,false,38,22);c->setColour(juce::Slider::trackColourId,colour);c->setColour(juce::Slider::thumbColourId,colour);}
         if(pan){c->setSliderStyle(juce::Slider::LinearHorizontal);c->setTextBoxStyle(juce::Slider::NoTextBox,false,0,0);c->setColour(juce::Slider::trackColourId,colour);c->setColour(juce::Slider::thumbColourId,colour);}
@@ -133,13 +136,22 @@ void DelayEditor::makeControl(int i) {
         if(i==duckMode)tooltipClient->setTooltip("Beat: rhythmic wet ducking. Input: duck echoes while the incoming audio is loud. Rate sets recovery.");
         if(i==routing)tooltipClient->setTooltip("Stereo uses tap pan. Ping Pong alternates taps and crossfeeds each phrase. Mono collapses the wet branch.");
         if(i==glitch)tooltipClient->setTooltip("Wet effects only: rhythmic Gate, previous-slice Stutter, or Reverse. Off preserves the echoes.");
-        if(i>=baseCount&&(i-baseCount)%4==3)tooltipClient->setTooltip("Tap balance in Stereo routing. Ping Pong positions taps automatically; Mono is centered.");
+        if(i>=baseCount&&i<swing&&(i-baseCount)%4==3)tooltipClient->setTooltip("Tap balance in Stereo routing. Ping Pong positions taps automatically; Mono is centered.");
     }
 }
 void DelayEditor::place(int id,juce::Rectangle<int> r,bool showLabel) {
     controls[static_cast<std::size_t>(id)]->setBounds(r);auto& label=*labels[static_cast<std::size_t>(id)];label.setVisible(showLabel);label.setBounds(r.getX()-6,r.getBottom()+1,r.getWidth()+12,19);
 }
 void DelayEditor::resized() {
+    selectedTap.setBounds(1000,905,164,28);
+    place(swing,{30,948,80,104});place(groove,{117,962,106,28});
+    place(freeze,{117,1024,106,28});place(patternMorph,{230,948,80,104});
+    for(int tap=0;tap<tapCount;++tap)for(int field=0;field<tapExtraCount;++field) {
+        const int id=tapExtraStart+tap*tapExtraCount+field;
+        const bool visible=tap==selectedTap.getSelectedId()-1;
+        controls[static_cast<std::size_t>(id)]->setVisible(visible);labels[static_cast<std::size_t>(id)]->setVisible(visible);
+        if(visible)place(id,{324+field*107,(field==1||field==2||field==5||field==7)?982:948,98,(field==1||field==2||field==5||field==7)?28:104});
+    }
     prevPreset.setBounds(850,26,28,35);preset.setBounds(882,26,166,35);nextPreset.setBounds(1052,26,28,35);place(bypass,{1093,26,86,35},false);pattern.setBounds(645,109,195,29);grid.setBounds(39,149,801,220);
     place(routing,{896,267,132,28},false);place(character,{1040,267,124,28},false);
     place(drive,{901,321,119,25});place(motion,{1038,321,119,25});
@@ -159,7 +171,9 @@ void DelayEditor::resized() {
 }
 void DelayEditor::paint(juce::Graphics& g) {
     g.fillAll(theme::kBackground);
+
     g.setGradientFill(juce::ColourGradient(theme::kAccentA.withAlpha(.12f),0,0,theme::kAccentB.withAlpha(.03f),1200,890,false));g.fillAll();
+    panel(g,{20,890,1160,190},"GROOVE / HOLD / TAP PERFORMANCE",theme::kAccentA);
     g.setColour(theme::kAccentA.withAlpha(.75f));g.fillRect(20,0,290,2);g.setColour(theme::kAccentB.withAlpha(.6f));g.fillRect(880,0,300,2);
     text(g,"openEDM",{26,20,163,37},29,theme::kText,true);text(g,"Delay",{151,20,124,37},29,theme::kAccentA,true);
     const bool synced=owner.hostSync.load();
