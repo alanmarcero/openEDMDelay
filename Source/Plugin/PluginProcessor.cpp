@@ -6,6 +6,7 @@
 namespace oed {
 DelayProcessor::DelayProcessor():AudioProcessor(BusesProperties().withInput("Input",juce::AudioChannelSet::stereo(),true).withOutput("Output",juce::AudioChannelSet::stereo(),true)),parameters(*this,nullptr,"openEDMDelay",makeLayout()) {
     for(std::size_t i=0;i<values.size();++i)values[i]=parameters.getRawParameterValue(parameterSpecs()[i].id);
+    setCurrentProgram(0);
 }
 void DelayProcessor::prepareToPlay(double sr,int){engine.prepare(sr);currentSampleRate=sr;internalPhase=0;wasBypassed=false;}
 void DelayProcessor::reset(){engine.reset();internalPhase=0;}
@@ -19,20 +20,31 @@ void DelayProcessor::processBlock(juce::AudioBuffer<float>& buffer,juce::MidiBuf
     if(values[bypass]->load()>.5f){processBlockBypassed(buffer,midi);return;}
     const bool requested=resetPending.exchange(false);
     if(wasBypassed||requested){engine.reset();wasBypassed=false;}
-    Transport transport;transport.bpm=values[tempo]->load();transport.ppq=internalPhase;transport.hasPpq=true;
-    bool synced=false;
-    if(auto* playhead=getPlayHead())if(auto position=playhead->getPosition()) {
-        if(auto bpm=position->getBpm();bpm&&std::isfinite(*bpm)&&*bpm>=20&&*bpm<=400) {
-            transport.bpm=*bpm;synced=true;
-            if(position->getIsPlaying())if(auto ppq=position->getPpqPosition();ppq&&std::isfinite(*ppq))transport.ppq=*ppq;
-        }
-    }
-    displayedBpm.store(transport.bpm);hostSync.store(synced);displayedPhase.store(transport.ppq);
+    const auto transport=updateClock(buffer.getNumSamples());
     engine.process(buffer.getWritePointer(0),buffer.getNumChannels()>1?buffer.getWritePointer(1):nullptr,buffer.getNumSamples(),settings(),transport);
-    internalPhase=transport.ppq+buffer.getNumSamples()/currentSampleRate*transport.bpm/60;
     duckMeter.store(engine.duckGain());outputPeak.store(buffer.getMagnitude(0,buffer.getNumSamples()));
 }
-void DelayProcessor::processBlockBypassed(juce::AudioBuffer<float>&,juce::MidiBuffer&) {
+Transport DelayProcessor::updateClock(int frames) {
+    Transport clock{values[tempo]->load(),internalPhase,true};
+    bool synced=false, playing=true;
+    if(auto* head=getPlayHead(); head && wrapperType!=wrapperType_Standalone) {
+        if(auto position=head->getPosition()) {
+            playing=position->getIsPlaying();
+            if(auto bpm=position->getBpm(); bpm && std::isfinite(*bpm) && *bpm>=20 && *bpm<=400) {
+                clock.bpm=*bpm;
+                synced=true;
+            }
+            if(playing) if(auto ppq=position->getPpqPosition(); ppq && std::isfinite(*ppq)) clock.ppq=*ppq;
+        }
+    }
+    displayedBpm.store(clock.bpm);
+    hostSync.store(synced);
+    if(playing) displayedPhase.store(clock.ppq);
+    internalPhase=clock.ppq+frames/currentSampleRate*clock.bpm/60;
+    return clock;
+}
+void DelayProcessor::processBlockBypassed(juce::AudioBuffer<float>& buffer,juce::MidiBuffer&) {
+    updateClock(buffer.getNumSamples());
     if(!wasBypassed){engine.reset();wasBypassed=true;}duckMeter.store(1);outputPeak.store(0);
 }
 double DelayProcessor::getTailLengthSeconds()const {
@@ -61,74 +73,112 @@ void DelayProcessor::setPlainValue(int id,float value) {
     auto* p=parameters.getParameter(parameterSpecs()[static_cast<std::size_t>(id)].id);
     p->setValueNotifyingHost(p->convertTo0to1(value));
 }
+namespace {
+struct Hit { int step=0, level=0, pan=0; };
+struct Rhythm { const char* name; std::array<Hit,tapCount> taps; };
+constexpr Rhythm rhythms[]{
+    {"Centre Throw",    {{{1,100,0}}}},
+    {"Left Answer",     {{{1,96,-65},{3,75,76},{7,36,-30}}}},
+    {"Dotted Pair",     {{{2,95,-34},{5,81,58},{8,45,-65},{11,32,30}}}},
+    {"Back Alley",      {{{2,94,20},{4,49,-44},{7,89,80},{10,44,-72},{15,61,14}}}},
+    {"Three on Two",    {{{2,96,-75},{3,78,75},{6,58,-47},{9,56,48},{12,39,-25}}}},
+    {"Crossfade",       {{{1,95,-92},{3,80,-66},{6,67,-31},{8,88,5},{11,61,34},{14,48,70},{16,38,94}}}},
+    {"Late Pickup",     {{{3,88,-37},{7,74,64},{12,52,-68},{14,62,32},{15,74,-28},{16,90,15}}}},
+    {"Eight Lanterns",  {{{1,96,-80},{3,61,41},{4,83,-34},{6,52,82},{9,77,-65},{10,51,21},{13,72,-17},{15,45,74}}}},
+    {"Dub Holes",       {{{1,100,0},{4,71,-60},{10,64,71},{16,40,-23}}}},
+    {"Cut and Return",  {{{1,98,53},{2,66,-50},{5,70,82},{7,40,-85},{12,81,-10},{13,45,70}}}},
+    {"Triplet Fan",     {{{1,97,-65},{2,79,65},{3,69,-15},{7,72,75},{8,55,-80},{9,50,25}}}},
+    {"End Roll",        {{{2,86,-52},{5,53,58},{9,65,-40},{12,72,44},{13,65,-65},{14,71,72},{15,80,-85},{16,95,85}}}}
+};
+
+struct Program {
+    const char* name;
+    int rhythm, grid;
+    Routing stereo;
+    Character texture;
+    int loop, wet, hp, lp;
+    std::initializer_list<std::pair<int,float>> controls;
+};
+constexpr int tapExtra(int tap,int field) {return tapExtraStart+(tap-1)*tapExtraCount+field;}
+const Program bank[]{
+    {"Lead / Signal Glass",    2,2,Routing::stereo,Character::digital,34,32,260,10800,{{duck,38},{duckMode,1},{decay,33},{width,92}}},
+    {"Lead / Second Voice",    1,5,Routing::pingPong,Character::tape,42,29,240,7800,{{motion,22},{drive,19},{duck,43},{duckMode,1}}},
+    {"Lead / Prism Row",       7,0,Routing::stereo,Character::digital,29,35,460,12600,{{decay,41},{diffusion,12},{tapExtra(5,1),1}}},
+    {"Lead / Struck Silver",   0,8,Routing::stereo,Character::bbd,39,27,380,6400,{{drive,32},{diffusion,21},{diffusionSize,8}}},
+    {"Lead / Overpass",        5,6,Routing::stereo,Character::tape,45,34,310,8900,{{motion,32},{wobbleRate,.72f},{patternMorph,12},{tapExtra(3,7),7}}},
+    {"Lead / Answering Arc",   6,3,Routing::pingPong,Character::digital,33,31,330,9900,{{duck,46},{duckMode,1},{tapExtra(6,1),2}}},
+    {"Groove / Back Door",     3,2,Routing::stereo,Character::bbd,25,28,210,5000,{{groove,1},{drive,39},{duck,16},{tapExtra(2,0),78}}},
+    {"Groove / Ghost Step",    9,10,Routing::stereo,Character::loFi,21,30,420,6200,{{swing,32},{glitch,2},{glitchRate,0},{glitchAmount,30},{tapExtra(4,0),56}}},
+    {"Groove / Cork Heel",     0,1,Routing::mono,Character::tape,17,23,180,4300,{{drive,48},{motion,9},{duck,10}}},
+    {"Groove / Shuffle Bar",   7,2,Routing::stereo,Character::digital,26,31,340,8300,{{groove,1},{decay,38},{tapExtra(6,1),1},{tapExtra(8,0),61}}},
+    {"Groove / Three Chairs",  4,4,Routing::pingPong,Character::bbd,32,29,230,6100,{{duck,32},{drive,34},{diffusion,14}}},
+    {"Groove / Pocket Skip",  10,1,Routing::stereo,Character::tape,24,28,370,7350,{{groove,2},{motion,13},{tapExtra(3,0),65},{tapExtra(5,1),1}}},
+    {"Dub / Send Spring",      8,4,Routing::stereo,Character::tape,66,39,145,3600,{{drive,53},{motion,37},{diffusion,46},{diffusionSize,17}}},
+    {"Dub / Low Ceiling",      0,7,Routing::mono,Character::bbd,62,34,95,2600,{{drive,61},{lpSlope,3},{diffusion,23},{duck,14}}},
+    {"Dub / Empty Stair",      1,9,Routing::pingPong,Character::digital,51,35,260,5600,{{decay,45},{diffusion,31},{diffusionSize,21}}},
+    {"Dub / Brass Rail",       4,11,Routing::stereo,Character::bbd,55,33,190,4150,{{drive,52},{tapExtra(3,2),1},{tapExtra(3,4),2350},{tapExtra(5,5),1}}},
+    {"Dub / Flaking Paint",    3,5,Routing::stereo,Character::loFi,47,36,270,4800,{{decay,35},{diffusion,19},{tapExtra(4,0),72}}},
+    {"Dub / Far Corner",       8,12,Routing::pingPong,Character::tape,58,39,205,3720,{{motion,50},{wobbleRate,.24f},{diffusion,52},{diffusionSize,23}}},
+    {"Breaks / Sidecut",       9,0,Routing::stereo,Character::digital,22,31,660,9800,{{duck,45},{duckMode,1},{tapExtra(4,1),2}}},
+    {"Breaks / Snare Relay",   4,3,Routing::pingPong,Character::digital,31,30,520,10500,{{glitch,1},{glitchRate,1},{glitchAmount,29},{tapExtra(2,1),1}}},
+    {"Breaks / Ghost Rim",     3,10,Routing::stereo,Character::bbd,23,26,440,6700,{{groove,2},{drive,28},{tapExtra(2,0),65},{tapExtra(5,0),70}}},
+    {"Breaks / Brake Roll",   11,2,Routing::stereo,Character::loFi,19,34,480,7300,{{glitch,2},{glitchAmount,40},{glitchRate,1},{tapExtra(7,1),2}}},
+    {"Breaks / Needle Drop",   0,11,Routing::mono,Character::digital,26,25,750,9400,{{decay,18},{duck,56},{duckMode,1}}},
+    {"Breaks / Switch Hitter",10,6,Routing::pingPong,Character::tape,28,32,410,7700,{{wobbleRate,1.8f},{motion,21},{tapExtra(4,7),6},{patternMorph,28}}},
+    {"Glitch / Slice Index",   9,1,Routing::stereo,Character::loFi,37,44,370,7900,{{glitch,2},{glitchRate,2},{glitchAmount,74},{tapExtra(6,1),2}}},
+    {"Glitch / Fold Back",     6,7,Routing::pingPong,Character::digital,43,43,285,8350,{{glitch,3},{glitchRate,4},{glitchAmount,65},{diffusion,20}}},
+    {"Glitch / Shutter",       7,0,Routing::stereo,Character::digital,27,40,620,11600,{{glitch,1},{glitchRate,10},{glitchAmount,87},{duck,15}}},
+    {"Glitch / Torn Splice",  11,3,Routing::stereo,Character::tape,32,39,340,6600,{{glitch,2},{glitchRate,1},{glitchAmount,55},{motion,56},{wobbleShape,4}}},
+    {"Glitch / Carbon Copy",   1,5,Routing::mono,Character::loFi,46,38,310,4900,{{glitch,3},{glitchRate,6},{glitchAmount,51},{tapExtra(3,1),1}}},
+    {"Glitch / Crosscut",      5,10,Routing::stereo,Character::bbd,33,42,490,8100,{{glitch,1},{glitchRate,3},{glitchAmount,67},{drive,49},{tapExtra(5,0),80}}},
+    {"Space / Double Horizon", 1,13,Routing::pingPong,Character::tape,52,38,260,6300,{{motion,34},{wobbleRate,.18f},{diffusion,64},{diffusionSize,25}}},
+    {"Space / Long Exposure",  0,15,Routing::stereo,Character::digital,48,46,360,10000,{{diffusion,76},{diffusionSize,29},{duck,56},{duckMode,1}}},
+    {"Space / Eight Windows",  7,4,Routing::stereo,Character::bbd,44,36,230,6100,{{drive,30},{diffusion,56},{decay,39},{tapExtra(6,2),1},{tapExtra(6,4),3500}}},
+    {"Space / Half Light",     2,9,Routing::stereo,Character::tape,55,40,220,4700,{{motion,47},{wobbleShape,1},{diffusion,49},{diffusionSize,18}}},
+    {"Space / Night Ferry",    8,14,Routing::mono,Character::tape,49,35,185,3900,{{drive,45},{motion,38},{diffusion,61},{diffusionSize,22}}},
+    {"Space / Vanishing Line", 5,8,Routing::stereo,Character::digital,42,43,440,9300,{{glitch,3},{glitchRate,7},{glitchAmount,26},{diffusion,55},{decay,52}}}
+};
+}
+
 const juce::StringArray& patternNames() {
-    static const juce::StringArray names{"Single","Pattern 1+1","Pattern 2+1","Pattern 3+2","Pattern 3+4","Pattern 3+5","Pattern 4+3","Pattern 5+3","Eight Steps","Broken Orbit","Trance Cascade","Late Bloom"};return names;
+    static const auto names=[] {juce::StringArray list; for(const auto& rhythm:rhythms) list.add(rhythm.name); return list;}();
+    return names;
 }
 void DelayProcessor::applyPattern(int index) {
-    constexpr int patterns[][8]={{1,0,0,0,0,0,0,0},{1,1,0,0,0,0,0,0},{2,1,0,0,0,0,0,0},{3,2,0,0,0,0,0,0},{3,4,0,0,0,0,0,0},{3,5,0,0,0,0,0,0},{4,3,0,0,0,0,0,0},{5,3,0,0,0,0,0,0},{1,2,3,4,5,6,7,8},{2,3,7,8,10,11,14,16},{3,5,8,11,13,14,15,16},{4,6,8,10,12,14,15,16}};
-    index=juce::jlimit(0,11,index);
+    if(!juce::isPositiveAndBelow(index,static_cast<int>(std::size(rhythms))))return;
+    const auto& pattern=rhythms[index];
     for(int i=0;i<tapCount;++i) {
-        const int p=baseCount+i*4,step=patterns[index][i];setPlainValue(p,step>0?1.f:0.f);setPlainValue(p+1,static_cast<float>(std::max(1,step)));
-        setPlainValue(p+2,i==0?100.f:85.f-static_cast<float>(i)*5);setPlainValue(p+3,i%2?70.f:-70.f);
+        const auto hit=pattern.taps[static_cast<std::size_t>(i)];
+        const int id=baseCount+i*4;
+        setPlainValue(id,hit.step>0?1.f:0.f);
+        setPlainValue(id+1,static_cast<float>(std::max(1,hit.step)));
+        setPlainValue(id+2,static_cast<float>(hit.step?hit.level:70));
+        setPlainValue(id+3,static_cast<float>(hit.pan));
     }
 }
-int DelayProcessor::getNumPrograms(){return 36;}
+int DelayProcessor::getNumPrograms(){return static_cast<int>(std::size(bank));}
 const juce::String DelayProcessor::getProgramName(int index) {
-    static const juce::StringArray names{
-        "01  /  Melodic Techno: Neon Orbit", "02  /  Tech House: Clean Quarter", "03  /  Progressive House: Dotted Glass", "04  /  Progressive Trance: Analog Afterglow",
-        "05  /  Minimal Techno: Pattern 3+5", "06  /  Dub Techno: Mono Dub", "07  /  Trance: Trance Cascade", "08  /  Electro: Broken Transmission",
-        "09  /  Melodic Techno: Reverse Bloom", "10  /  Festival House: Ducking Lead", "11  /  Breakbeat: Lo-fi Satellites", "12  /  Progressive House: Tape Wash",
-        "13  /  Festival Drop Lead", "14  /  Tech House Offbeat", "15  /  Dubstep Stutter Pulse", "16  /  Trance Euphoria 1/8d",
-        "17  /  Future Rave Laser", "18  /  Bass House Skank", "19  /  Drum & Bass Rapidfire", "20  /  Hardstyle Toxic Tail",
-        "21  /  Deep Melodic Echo", "22  /  Electro Glitch Cloud", "23  /  Trap Triplet Bounce", "24  /  Acid Slapback",
-        "25  /  Trance: Gate Lift", "26  /  Progressive: Long Bloom", "27  /  Techno: Ping Pong Dots", "28  /  Psytrance: Stutter Pulse",
-        "29  /  Drum & Bass: Double-Time Spray", "30  /  Hardstyle: Reverse Impact", "31  /  Future Bass: Gate Chop", "32  /  Electro: BBD Haze",
-        "33  /  Melodic Techno: Wide Bloom", "34  /  Peak-Time Techno: Tape Puncture", "35  /  UK Garage: Triplet Bounce", "36  /  Rave: Dub Feedback Cloud"
-    };
-    return names[juce::jlimit(0, 35, index)];
+    return juce::isPositiveAndBelow(index,getNumPrograms()) ? bank[index].name : juce::String{};
 }
 void DelayProcessor::setCurrentProgram(int index) {
-    index=juce::jlimit(0,35,index);program.store(index);
-    for(int i=0;i<parameterCount;++i)setPlainValue(i,parameterSpecs()[static_cast<std::size_t>(i)].initial);
-    if(index==1){applyPattern(0);setPlainValue(gridRate,7);setPlainValue(routing,0);setPlainValue(character,0);setPlainValue(duck,0);}
-    if(index==2){applyPattern(0);setPlainValue(gridRate,5);setPlainValue(character,0);setPlainValue(feedback,48);}
-    if(index==3){applyPattern(4);setPlainValue(character,2);setPlainValue(lowPass,4200);setPlainValue(feedback,58);setPlainValue(drive,55);}
-    if(index==4){applyPattern(5);setPlainValue(routing,0);setPlainValue(character,0);setPlainValue(decay,0);}
-    if(index==5){applyPattern(0);setPlainValue(gridRate,5);setPlainValue(routing,2);setPlainValue(feedback,68);setPlainValue(lowPass,2300);setPlainValue(drive,60);}
-    if(index==6){applyPattern(10);setPlainValue(character,0);setPlainValue(feedback,42);setPlainValue(duck,60);}
-    if(index==7){applyPattern(9);setPlainValue(character,3);setPlainValue(glitch,2);setPlainValue(glitchAmount,65);setPlainValue(glitchRate,1);setPlainValue(duck,38);}
-    if(index==8){applyPattern(11);setPlainValue(glitch,3);setPlainValue(glitchAmount,80);setPlainValue(glitchRate,4);setPlainValue(feedback,58);}
-    if(index==9){applyPattern(5);setPlainValue(duck,85);setPlainValue(duckMode,1);setPlainValue(feedback,45);}
-    if(index==10){applyPattern(8);setPlainValue(character,3);setPlainValue(lowPass,4500);setPlainValue(glitch,1);setPlainValue(glitchAmount,40);}
-    if(index==11){applyPattern(11);setPlainValue(feedback,72);setPlainValue(motion,65);setPlainValue(lowPass,3200);setPlainValue(decay,48);setPlainValue(mix,45);}
-    if(index==12){applyPattern(10);setPlainValue(gridRate,6);setPlainValue(feedback,52);setPlainValue(duck,65);setPlainValue(duckMode,1);}
-    if(index==13){applyPattern(0);setPlainValue(gridRate,4);setPlainValue(routing,0);setPlainValue(lowPass,3500);setPlainValue(feedback,40);}
-    if(index==14){applyPattern(8);setPlainValue(character,3);setPlainValue(glitch,2);setPlainValue(glitchAmount,75);setPlainValue(glitchRate,2);setPlainValue(feedback,60);}
-    if(index==15){applyPattern(10);setPlainValue(gridRate,5);setPlainValue(feedback,62);setPlainValue(motion,55);setPlainValue(lowPass,5500);setPlainValue(mix,42);}
-    if(index==16){applyPattern(11);setPlainValue(character,1);setPlainValue(glitch,3);setPlainValue(glitchAmount,85);setPlainValue(drive,45);}
-    if(index==17){applyPattern(6);setPlainValue(gridRate,4);setPlainValue(routing,1);setPlainValue(feedback,44);setPlainValue(duck,50);}
-    if(index==18){applyPattern(8);setPlainValue(gridRate,2);setPlainValue(character,2);setPlainValue(feedback,38);setPlainValue(lowPass,4800);setPlainValue(decay,30);}
-    if(index==19){applyPattern(1);setPlainValue(gridRate,9);setPlainValue(character,3);setPlainValue(drive,70);setPlainValue(feedback,65);setPlainValue(highPass,120);}
-    if(index==20){applyPattern(3);setPlainValue(gridRate,7);setPlainValue(feedback,68);setPlainValue(decay,50);setPlainValue(motion,45);setPlainValue(lowPass,3800);}
-    if(index==21){applyPattern(9);setPlainValue(gridRate,8);setPlainValue(glitch,1);setPlainValue(glitchAmount,60);setPlainValue(glitchRate,3);setPlainValue(feedback,55);}
-    if(index==22){applyPattern(7);setPlainValue(gridRate,3);setPlainValue(routing,2);setPlainValue(feedback,46);setPlainValue(duck,40);}
-    if(index==23){applyPattern(0);setPlainValue(gridRate,1);setPlainValue(routing,0);setPlainValue(feedback,20);setPlainValue(drive,35);setPlainValue(mix,30);}
-    if(index==24){applyPattern(10);setPlainValue(gridRate,10);setPlainValue(glitch,1);setPlainValue(glitchRate,2);setPlainValue(glitchAmount,72);setPlainValue(duck,55);setPlainValue(duckMode,0);setPlainValue(highPass,260);}
-    if(index==25){applyPattern(11);setPlainValue(gridRate,15);setPlainValue(character,1);setPlainValue(feedback,72);setPlainValue(motion,68);setPlainValue(lowPass,6800);setPlainValue(mix,52);}
-    if(index==26){applyPattern(5);setPlainValue(gridRate,13);setPlainValue(routing,1);setPlainValue(character,0);setPlainValue(feedback,58);setPlainValue(highPass,420);setPlainValue(lowPass,7800);setPlainValue(width,82);}
-    if(index==27){applyPattern(9);setPlainValue(gridRate,12);setPlainValue(character,3);setPlainValue(glitch,2);setPlainValue(glitchRate,3);setPlainValue(glitchAmount,84);setPlainValue(duck,35);setPlainValue(duckMode,1);}
-    if(index==28){applyPattern(8);setPlainValue(gridRate,0);setPlainValue(character,0);setPlainValue(routing,1);setPlainValue(feedback,32);setPlainValue(highPass,650);setPlainValue(duck,72);setPlainValue(duckMode,1);setPlainValue(duckRate,8);}
-    if(index==29){applyPattern(11);setPlainValue(gridRate,14);setPlainValue(glitch,3);setPlainValue(glitchRate,7);setPlainValue(glitchAmount,92);setPlainValue(feedback,62);setPlainValue(highPass,120);setPlainValue(lowPass,5200);}
-    if(index==30){applyPattern(6);setPlainValue(gridRate,11);setPlainValue(character,0);setPlainValue(glitch,1);setPlainValue(glitchRate,3);setPlainValue(glitchAmount,78);setPlainValue(duck,48);setPlainValue(mix,45);}
-    if(index==31){applyPattern(3);setPlainValue(gridRate,12);setPlainValue(character,2);setPlainValue(drive,62);setPlainValue(feedback,48);setPlainValue(lowPass,4100);setPlainValue(motion,32);}
-    if(index==32){applyPattern(11);setPlainValue(gridRate,15);setPlainValue(routing,0);setPlainValue(character,1);setPlainValue(feedback,58);setPlainValue(motion,72);setPlainValue(duck,32);setPlainValue(lowPass,6200);}
-    if(index==33){applyPattern(9);setPlainValue(gridRate,13);setPlainValue(character,1);setPlainValue(drive,74);setPlainValue(motion,86);setPlainValue(feedback,64);setPlainValue(highPass,180);setPlainValue(lowPass,3600);}
-    if(index==34){applyPattern(10);setPlainValue(gridRate,10);setPlainValue(routing,1);setPlainValue(character,0);setPlainValue(feedback,42);setPlainValue(glitch,2);setPlainValue(glitchRate,6);setPlainValue(glitchAmount,52);setPlainValue(duck,48);}
-    if(index==35){applyPattern(11);setPlainValue(gridRate,14);setPlainValue(character,2);setPlainValue(drive,58);setPlainValue(feedback,78);setPlainValue(decay,35);setPlainValue(lowPass,5000);setPlainValue(mix,58);}
+    index=juce::jlimit(0,getNumPrograms()-1,index);
+    const auto& sound=bank[index];
+    for(int i=0;i<parameterCount;++i) setPlainValue(i,parameterSpecs()[static_cast<std::size_t>(i)].initial);
+    applyPattern(sound.rhythm);
+    setPlainValue(gridRate,static_cast<float>(sound.grid));
+    setPlainValue(routing,static_cast<float>(sound.stereo));
+    setPlainValue(character,static_cast<float>(sound.texture));
+    setPlainValue(feedback,static_cast<float>(sound.loop));
+    setPlainValue(mix,static_cast<float>(sound.wet));
+    setPlainValue(highPass,static_cast<float>(sound.hp));
+    setPlainValue(lowPass,static_cast<float>(sound.lp));
+    for(auto [id,value]:sound.controls) setPlainValue(id,value);
+    program.store(index);
+    oldBank.store(false);
     resetPending.store(true);
 }
 void DelayProcessor::getStateInformation(juce::MemoryBlock& block) {
-    auto state=parameters.copyState();state.setProperty("program",program.load(),nullptr);
+    auto state=parameters.copyState();state.setProperty("program",program.load(),nullptr);state.setProperty("programBank",oldBank.load()?0:1,nullptr);
     if(auto xml=state.createXml())copyXmlToBinary(*xml,block);
 }
 void DelayProcessor::setStateInformation(const void* data,int size) {
@@ -149,7 +199,7 @@ void DelayProcessor::setStateInformation(const void* data,int size) {
                 juce::ValueTree child("PARAM");child.setProperty("id",spec.id,nullptr);child.setProperty("value",spec.initial,nullptr);state.appendChild(child,nullptr);
             } else if(matches!=1)return;
         }
-        parameters.replaceState(state);program.store(juce::jlimit(0,35,static_cast<int>(state.getProperty("program",0))));resetPending.store(true);
+        parameters.replaceState(state);oldBank.store(static_cast<int>(state.getProperty("programBank",0))!=1);program.store(juce::jlimit(0,35,static_cast<int>(state.getProperty("program",0))));resetPending.store(true);
     }
 }
 }

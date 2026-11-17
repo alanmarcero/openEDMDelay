@@ -33,7 +33,7 @@ private:
     DelayProcessor& owner;
     DelayLookAndFeel look;
     TapGrid grid;
-    juce::Image artwork;
+    std::unique_ptr<juce::Drawable> reel;
     Content content{*this};
     juce::Viewport viewport;
     std::array<std::unique_ptr<juce::Component>,parameterCount> controls;
@@ -42,7 +42,7 @@ private:
     std::vector<std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment>> combos;
     std::vector<std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment>> buttons;
     juce::ComboBox preset,pattern,selectedTap;
-    juce::TextButton prevPreset{"PREV"}, nextPreset{"NEXT"};
+    juce::TextButton prevPreset{"Previous"}, nextPreset{"Next"};
     juce::TooltipWindow tooltip{this,650};
     int shownProgram=-1;
 };

@@ -12,6 +12,9 @@ constexpr float kControlFontSize = 14.0f;
 } // namespace
 
 DelayLookAndFeel::DelayLookAndFeel() {
+    setColour(juce::TooltipWindow::backgroundColourId, theme::kKnobBody);
+    setColour(juce::TooltipWindow::textColourId, theme::kText);
+    setColour(juce::TooltipWindow::outlineColourId, theme::kPanelEdge);
     setColour(juce::ResizableWindow::backgroundColourId, theme::kBackground);
     setColour(juce::Label::textColourId, theme::kText);
     setColour(juce::Slider::textBoxTextColourId, theme::kTextDim);
@@ -26,7 +29,7 @@ DelayLookAndFeel::DelayLookAndFeel() {
     setColour(juce::PopupMenu::highlightedBackgroundColourId, theme::kTrack);
     setColour(juce::PopupMenu::highlightedTextColourId, theme::kText);
     setColour(juce::TextButton::buttonColourId, theme::kKnobBody);
-    setColour(juce::TextButton::textColourOffId, theme::kTextDim);
+    setColour(juce::TextButton::textColourOffId, theme::kText);
     setColour(juce::TextButton::textColourOnId, theme::kBackground);
     setColour(juce::TextEditor::backgroundColourId, theme::kKnobBody);
     setColour(juce::TextEditor::textColourId, theme::kText);
@@ -79,7 +82,7 @@ void DelayLookAndFeel::drawComboBox(juce::Graphics& g, int width, int height, bo
     const auto bounds = juce::Rectangle<int>(width, height).toFloat().reduced(0.5f);
     g.setColour(box.findColour(juce::ComboBox::backgroundColourId));
     g.fillRoundedRectangle(bounds, kCornerRadius);
-    g.setColour(box.findColour(juce::ComboBox::outlineColourId).withAlpha(box.isMouseOver(true) ? 0.9f : 0.45f));
+    g.setColour(box.findColour(juce::ComboBox::outlineColourId).withAlpha(box.isMouseOver(true) || box.hasKeyboardFocus(true) ? 0.95f : 0.45f));
     g.drawRoundedRectangle(bounds, kCornerRadius, 1.0f);
 
     const auto arrowArea = bounds.withLeft(bounds.getRight() - 18.0f).reduced(5.0f, bounds.getHeight() * 0.38f);
@@ -102,7 +105,7 @@ void DelayLookAndFeel::drawButtonBackground(juce::Graphics& g, juce::Button& but
     const bool isOn = button.getToggleState();
     g.setColour(isOn ? accent : theme::kKnobBody);
     g.fillRoundedRectangle(bounds, kCornerRadius);
-    g.setColour(accent.withAlpha(isHighlighted || isOn ? 0.9f : 0.45f));
+    g.setColour(accent.withAlpha(isHighlighted || isOn || button.hasKeyboardFocus(false) ? 0.95f : 0.45f));
     g.drawRoundedRectangle(bounds, kCornerRadius, 1.0f);
 }
 
@@ -115,6 +118,12 @@ void DelayLookAndFeel::drawButtonText(juce::Graphics& g, juce::TextButton& butto
 
 juce::Font DelayLookAndFeel::getComboBoxFont(juce::ComboBox&) {
     return juce::FontOptions(kControlFontSize);
+}
+
+void DelayLookAndFeel::getIdealPopupMenuItemSize(const juce::String& text, bool separator, int standardHeight,
+                                                 int& width, int& height) {
+    LookAndFeel_V4::getIdealPopupMenuItemSize(text, separator, standardHeight, width, height);
+    if (!separator) height = std::max(height, 36);
 }
 
 juce::Font DelayLookAndFeel::getPopupMenuFont() {

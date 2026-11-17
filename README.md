@@ -1,4 +1,4 @@
-# openEDMDelay v1.2.1
+# openEDMDelay v1.3.0
 
 Build beat-synced echoes from eight taps. Use it for rhythmic repeats, stereo movement, and glitch transitions.
 
@@ -6,12 +6,15 @@ Build beat-synced echoes from eight taps. Use it for rhythmic repeats, stereo mo
 
 ![openEDMDelay editor](docs/screenshots/openEDMDelay.png)
 
-*Native editor capture.*
+## Choose an echo
+
+The 36 factory programs come in six families of six. **Lead** leaves space around a melody. **Groove** adds swung answers and ghost steps. **Dub** uses filtered feedback and diffusion. **Breaks** builds short, offset repeats. **Glitch** slices, gates, or reverses the echoes. **Space** uses slower divisions for longer throws.
+
+Start with **Lead / Signal Glass** on a synth line, **Dub / Send Spring** on a short chord, or **Glitch / Slice Index** on drums. The preset arrows step through the entire bank. The 12 rhythm templates in **Tap field** change tap positions, levels, and pans while keeping your grid and effects. Try **Crossfade** for a left-to-right sweep or **End Roll** for a cluster of late taps. Older sessions recall their saved settings and display **Custom sound**.
 
 ## Features
 
 - **Eight taps:** Enable each tap, set its grid position and level, and place it in the stereo field. Drag the tap display to change time, level, or pan. Right-click a tap to mute it.
-- **Rhythms and presets:** Choose from 12 rhythm templates and 36 factory programs for trance, techno, house, drum and bass, hardstyle, garage, and rave.
 - **Beat grid:** Choose straight, dotted, or triplet divisions from 1/32 to a dotted whole note. Each tap can use 1–16 steps, for phrases up to 96 beats.
 - **Stereo and character:** Choose Stereo, Ping Pong, or Mono routing. Ping Pong alternates repeats between left and right. Stereo follows each tap's pan. Choose Digital, Tape, BBD, or Lo-fi for the feedback sound. Tape Motion sets wobble depth. Wobble Rate ranges from 0.05 to 8 Hz with five waveforms.
 - **Per-tap shaping:** Set Chance from 0–100% and add 1–8 ratchets to each tap. Add optional 12 dB per octave high-pass or low-pass filters, color, and drive.
@@ -21,9 +24,9 @@ Build beat-synced echoes from eight taps. Use it for rhythmic repeats, stereo mo
 - **Wet effects:** Add Gate, Stutter, or Reverse effects with their own beat rate and mix.
 - **Output:** Set dry/wet Mix, stereo Width, and output gain. Use bypass. Controls support host automation and session recall. The dry path adds no latency.
 
-Delay grids and beat effects follow host tempo from 20 to 400 BPM when available. The internal clock uses 120 BPM by default. Beat effects use the host clock during playback and the internal clock when stopped. Input ducking listens to the main input. There is no separate sidechain bus.
+Delay grids and beat effects follow host tempo from 20 to 400 BPM when available. The internal clock uses 120 BPM by default. The animated tape reels turn once every two beats, follow host seeks, and hold their position when transport stops. Standalone and hosts without a playhead use the internal clock. The audio beat effects continue on their internal clock when the host stops. Input ducking listens to the main input. There is no separate sidechain bus.
 
-![Broken Transmission program](docs/screenshots/openEDMDelay-glitch.png)
+![Glitch / Slice Index program with enabled taps and stutter controls](docs/screenshots/openEDMDelay-glitch.png)
 
 ![Tap, groove, filter, hold, and diffusion controls](docs/screenshots/openEDMDelay-performance.png)
 
