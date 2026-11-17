@@ -1,7 +1,9 @@
 #include "PluginProcessor.h"
+#include <juce_audio_formats/juce_audio_formats.h>
 #include <algorithm>
 #include <array>
 #include <iostream>
+#include <set>
 #include <stdexcept>
 using namespace oed;
 void require(bool x,const char* why){if(!x)throw std::runtime_error(why);}
@@ -16,6 +18,9 @@ void audio(){
     p.setPlainValue(bypass,1);b.clear();b.setSample(0,0,.7f);p.processBlock(b,m);require(b.getSample(0,0)==.7f,"Bypass changes dry input");
     p.setPlainValue(bypass,0);b.clear();p.processBlock(b,m);require(b.getMagnitude(0,b.getNumSamples())==0,"Bypass resurrects stale echoes");
     require(p.getLatencySamples()==0,"Dry path latency");
+    b.setSize(2,4800);b.clear();p.processBlock(b,m);
+    const auto start=p.displayedPhase.load();p.processBlock(b,m);
+    require(std::abs(p.displayedPhase.load()-start-.15)<1e-6,"Internal reel does not follow 90 BPM without a host");
 }
 void presetWhileBypassed(){
     DelayProcessor p;clean(p);p.prepareToPlay(8000,64);juce::MidiBuffer midi;juce::AudioBuffer<float> first(2,64);first.clear();
@@ -41,6 +46,7 @@ static void legacyAndPerformanceState(){
     }
     juce::MemoryBlock block;auto xml=legacy.createXml();juce::AudioProcessor::copyXmlToBinary(*xml,block);
     p.setPlainValue(mix,15);p.setStateInformation(block.getData(),static_cast<int>(block.getSize()));
+    require(p.displayedProgram()==-1,"Legacy session is mislabeled with a replacement factory name");
     require(std::abs(p.values[mix]->load()-73)<.0001f,"Legacy state rejected after adding parameters");
     p.setPlainValue(swing,50);p.setPlainValue(patternMorph,75);p.setPlainValue(freeze,1);
     p.setPlainValue(diffusion,35);p.setPlainValue(diffusionSize,24);p.setPlainValue(wobbleRate,2.5f);p.setPlainValue(wobbleShape,3);
@@ -94,8 +100,80 @@ static void scrollableControls() {
         }
     }
 }
+static void bankAudio() {
+    DelayProcessor p;Host host;host.info.setIsPlaying(true);host.info.setBpm(160);host.info.setPpqPosition(0);
+    constexpr int rate=48000,frames=rate*6;
+    p.setPlayHead(&host);p.prepareToPlay(rate,frames);
+    juce::AudioBuffer<float> wave(2,frames);juce::MidiBuffer midi;
+    std::unique_ptr<juce::AudioFormatWriter> writer;
+    if(const char* path=std::getenv("OPENEDMDELAY_IMPULSE_RENDER")) {
+        auto stream=juce::File(path).createOutputStream();
+        require(stream!=nullptr,"Cannot open impulse render");
+        stream->setPosition(0);stream->truncate();
+        std::unique_ptr<juce::OutputStream> output=std::move(stream);
+        const auto options=juce::AudioFormatWriterOptions{}.withSampleRate(rate).withNumChannels(2).withBitsPerSample(24);
+        writer=juce::WavAudioFormat{}.createWriterFor(output,options);
+        require(writer!=nullptr,"Cannot write impulse WAV");
+    }
+    std::set<uint64_t> signatures;double minimum=6.0,maximum=0;
+    for(int i=0;i<p.getNumPrograms();++i) {
+        p.setCurrentProgram(i);wave.clear();wave.setSample(0,0,.8f);wave.setSample(1,0,.5f);p.processBlock(wave,midi);
+        int first=-1;uint64_t signature=1469598103934665603ULL;
+        for(int s=32;s<wave.getNumSamples();++s) {
+            for(int c=0;c<2;++c) {
+                const float v=wave.getSample(c,s);
+                require(std::isfinite(v),"Non-finite factory impulse response");
+                if(first<0 && std::abs(v)>0.00005f)first=s;
+                signature=(signature^static_cast<uint32_t>(std::lround(v*100000.0f)))*1099511628211ULL;
+            }
+        }
+        require(first>=0,p.getProgramName(i).toRawUTF8());
+        minimum=std::min(minimum,static_cast<double>(first)/rate);maximum=std::max(maximum,static_cast<double>(first)/rate);
+        if(writer) require(writer->writeFromAudioSampleBuffer(wave,0,frames),"Impulse export failed");
+        require(signatures.insert(signature).second,"Two factory programs produced identical wet echoes");
+    }
+    std::cout<<"36 distinct impulse responses at 160 BPM, first echoes "<<minimum<<" to "<<maximum<<" s\n";
+    require(patternNames().size()==12,"Rhythm template count changed");
+    std::set<std::array<int,tapCount>> shapes;
+    p.setPlainValue(feedback,64);
+    for(int i=0;i<patternNames().size();++i) {
+        p.applyPattern(i);const auto sound=p.settings();std::array<int,tapCount> steps{};
+        for(std::size_t t=0;t<steps.size();++t)steps[t]=sound.taps[t].enabled?sound.taps[t].step:0;
+        require(shapes.insert(steps).second,"Duplicate rhythm template");
+        require(std::abs(sound.feedback-.64f)<.001f,"Loading a rhythm changed echo feedback");
+    }
+    p.setPlayHead(nullptr);
+}
+
+static void checkHitTargets(juce::Component& surface,juce::Component& parent) {
+    for(auto* c:parent.getChildren()) {
+        if(!c->isVisible())continue;
+        if(dynamic_cast<juce::TextButton*>(c)||dynamic_cast<juce::ComboBox*>(c)) {
+            const auto area=surface.getLocalArea(c,c->getLocalBounds());
+            require(area.getWidth()>=44&&area.getHeight()>=36,c->getComponentID().toRawUTF8());
+            auto* hit=surface.getComponentAt(area.getCentre());
+            require(hit==c||c->isParentOf(hit),"A control is covered by another component");
+        }
+        checkHitTargets(surface,*c);
+    }
+}
+
 void ui(const juce::File& destination){
     DelayProcessor p;p.prepareToPlay(48000,256);std::unique_ptr<juce::AudioProcessorEditor> e(p.createEditor());
+    e->setVisible(true);
+    auto* surface=dynamic_cast<juce::Viewport*>(find(*e,"editorViewport"))->getViewedComponent();
+    checkHitTargets(*surface,*surface);
+    int menuWidth=0,menuHeight=0;e->getLookAndFeel().getIdealPopupMenuItemSize("Signal Glass",false,0,menuWidth,menuHeight);
+    require(menuHeight>=36,"Preset menu rows are too small");
+    auto* browser=dynamic_cast<juce::ComboBox*>(find(*e,"preset"));
+    auto* previous=dynamic_cast<juce::TextButton*>(find(*e,"prevPreset"));
+    auto* next=dynamic_cast<juce::TextButton*>(find(*e,"nextPreset"));
+    require(browser&&previous&&next,"Missing preset browser controls");
+    previous->onClick();require(p.getCurrentProgram()==35,"Previous failed to wrap");
+    next->onClick();require(p.getCurrentProgram()==0,"Next failed to wrap");
+    browser->setSelectedId(13,juce::sendNotificationSync);
+    require(p.getCurrentProgram()==12,"Preset menu did not update the processor");
+    browser->setSelectedId(1,juce::sendNotificationSync);
     auto* initialMix=find(*e,"mix");require(initialMix!=nullptr,"Initial mix control missing");bool initialUnit=false;
     for(auto* child:initialMix->getChildren())if(auto* label=dynamic_cast<juce::Label*>(child))initialUnit=label->getText()=="32%";
     require(initialUnit,"Initial knob value is missing its unit");
@@ -117,11 +195,19 @@ void ui(const juce::File& destination){
     require(std::all_of(usedDivisions.begin(),usedDivisions.end(),[](bool used){return used;}),"Factory bank does not use every synchronized grid division");
     require(destination.createDirectory().wasOk(),"Screenshot directory failed");
     const auto save=[&](const juce::String& name){auto out=destination.getChildFile(name).createOutputStream();require(out!=nullptr,"Screenshot open failed");out->setPosition(0);out->truncate();require(juce::PNGImageFormat{}.writeImageToStream(e->createComponentSnapshot(e->getLocalBounds(),true,1.5f),*out),"Screenshot failed");};
-    p.setCurrentProgram(32);p.processBlock(b,midi);juce::MessageManager::getInstance()->runDispatchLoopUntil(60);save("openEDMDelay.png");
+    const auto reelImage=[&]{p.processBlock(b,midi);return e->createComponentSnapshot({918,113,68,68});};
+    host.info.setPpqPosition(-2);const auto downbeat=reelImage();
+    host.info.setBpm(141);host.info.setPpqPosition(7.5);const auto offbeat=reelImage();
+    int changed=0;for(int y=0;y<68;++y)for(int x=0;x<68;++x)if(downbeat.getPixelAt(x,y)!=offbeat.getPixelAt(x,y))++changed;
+    require(changed>80&&p.displayedBpm.load()==141,"SVG reel does not follow host seeks and tempo");
+    host.info.setIsPlaying(false);host.info.setPpqPosition(8);const auto frozen=reelImage();
+    for(int y=0;y<68;++y)for(int x=0;x<68;++x)require(frozen.getPixelAt(x,y)==offbeat.getPixelAt(x,y),"Stopped SVG reel keeps advancing");
+    host.info.setIsPlaying(true);host.info.setPpqPosition(1.35);host.info.setBpm(128);
+    p.setCurrentProgram(0);p.processBlock(b,midi);juce::MessageManager::getInstance()->runDispatchLoopUntil(60);save("openEDMDelay.png");
     auto* viewport=dynamic_cast<juce::Viewport*>(find(*e,"editorViewport"));
     require(viewport!=nullptr,"Editor viewport missing during capture");
     p.setCurrentProgram(0);p.setPlainValue(diffusion,65);p.setPlainValue(diffusionSize,20);p.processBlock(b,midi);
     juce::MessageManager::getInstance()->runDispatchLoopUntil(60);viewport->setViewPosition(0,1100);save("openEDMDelay-performance.png");viewport->setViewPosition(0,0);
-    p.setCurrentProgram(7);p.processBlock(b,midi);juce::MessageManager::getInstance()->runDispatchLoopUntil(60);save("openEDMDelay-glitch.png");p.setPlayHead(nullptr);
+    p.setCurrentProgram(24);p.processBlock(b,midi);juce::MessageManager::getInstance()->runDispatchLoopUntil(60);save("openEDMDelay-glitch.png");p.setPlayHead(nullptr);
 }
-int main(int argc,char** argv){juce::ScopedJuceInitialiser_GUI gui;int errors=0;for(const auto& [name,test]:std::initializer_list<std::pair<const char*,void(*)()>>{{"filtered tap host tail",filteredTapTail},{"diffusion host tail",diffusionHostTail},{"scrollable control access",scrollableControls},{"host audio/bypass",audio},{"session recall",recall},{"malformed parameter state",malformedState},{"preset while bypassed",presetWhileBypassed}})try{test();std::cout<<"PASS "<<name<<'\n';}catch(const std::exception& e){std::cerr<<"FAIL "<<name<<": "<<e.what()<<'\n';++errors;}try{ui(juce::File::getCurrentWorkingDirectory().getChildFile(argc>1?argv[1]:"docs/screenshots"));std::cout<<"PASS native controls and actual editor screenshots\n";}catch(const std::exception& e){std::cerr<<"FAIL UI: "<<e.what()<<'\n';++errors;}return errors?1:0;}
+int main(int argc,char** argv){juce::ScopedJuceInitialiser_GUI gui;int errors=0;for(const auto& [name,test]:std::initializer_list<std::pair<const char*,void(*)()>>{{"factory impulse responses and rhythms",bankAudio},{"filtered tap host tail",filteredTapTail},{"diffusion host tail",diffusionHostTail},{"scrollable control access",scrollableControls},{"host audio/bypass",audio},{"session recall",recall},{"malformed parameter state",malformedState},{"preset while bypassed",presetWhileBypassed}})try{test();std::cout<<"PASS "<<name<<'\n';}catch(const std::exception& e){std::cerr<<"FAIL "<<name<<": "<<e.what()<<'\n';++errors;}try{ui(juce::File::getCurrentWorkingDirectory().getChildFile(argc>1?argv[1]:"docs/screenshots"));std::cout<<"PASS native controls and actual editor screenshots\n";}catch(const std::exception& e){std::cerr<<"FAIL UI: "<<e.what()<<'\n';++errors;}return errors?1:0;}

@@ -18,6 +18,7 @@ public:
     void drawButtonText(juce::Graphics& g, juce::TextButton& button, bool isHighlighted, bool isDown) override;
     juce::Font getComboBoxFont(juce::ComboBox& box) override;
     juce::Font getPopupMenuFont() override;
+    void getIdealPopupMenuItemSize(const juce::String&, bool, int, int&, int&) override;
     juce::Label* createSliderTextBox(juce::Slider& slider) override;
 };
 

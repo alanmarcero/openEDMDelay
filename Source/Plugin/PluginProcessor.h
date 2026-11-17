@@ -26,6 +26,7 @@ public:
     void changeProgramName(int,const juce::String&) override {}
     void getStateInformation(juce::MemoryBlock&) override;
     void setStateInformation(const void*,int) override;
+    int displayedProgram() const {return oldBank.load() ? -1 : program.load();}
     void setPlainValue(int,float);
     void applyPattern(int);
     Settings settings() const {return readSettings(values);}
@@ -35,7 +36,9 @@ public:
     std::atomic<bool> hostSync{false};
     std::atomic<float> duckMeter{1},outputPeak{0};
 private:
+    Transport updateClock(int frames);
     DelayEngine engine;
+    std::atomic<bool> oldBank{false};
     std::atomic<int> program{0};
     std::atomic<bool> resetPending{false};
     bool wasBypassed=false;
