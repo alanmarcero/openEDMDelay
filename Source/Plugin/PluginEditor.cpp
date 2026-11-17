@@ -111,15 +111,16 @@ void DelayEditor::makeControl(int i) {
     const auto colour=i>=baseCount?accent((i-baseCount)/4):(i==highPass||i==hpSlope?theme::kAccentA:theme::kAccentB);
     auto label=std::make_unique<juce::Label>();label->setText(spec.name,juce::dontSendNotification);label->setJustificationType(juce::Justification::centred);label->setFont(juce::FontOptions(11.5f));label->setColour(juce::Label::textColourId,theme::kTextDim);content.addAndMakeVisible(*label);labels[static_cast<std::size_t>(i)]=std::move(label);
     if(i==bypass||(i>=baseCount&&i<swing&&(i-baseCount)%4==0)) {
-        auto c=std::make_unique<juce::TextButton>(i==bypass?"BYPASS":"TAP "+juce::String((i-baseCount)/4+1).paddedLeft('0',2));
+        const int tapNumber=(i-baseCount)/4+1;
+        auto c=std::make_unique<juce::TextButton>(i==bypass?"BYPASS":"TAP "+juce::String(tapNumber).paddedLeft('0',2));
         c->setClickingTogglesState(true);c->setColour(juce::TextButton::buttonOnColourId,i==bypass?theme::kAccentB:colour);
-        c->setComponentID(spec.id);content.addAndMakeVisible(*c);buttons.push_back(std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(owner.parameters,spec.id,*c));controls[static_cast<std::size_t>(i)]=std::move(c);
+        c->setComponentID(spec.id);c->setTooltip(i==bypass?"Bypass the delay effect.":"Enable or bypass tap "+juce::String(tapNumber)+".");content.addAndMakeVisible(*c);buttons.push_back(std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(owner.parameters,spec.id,*c));controls[static_cast<std::size_t>(i)]=std::move(c);
     } else if(spec.choices.isNotEmpty()) {
         auto c=std::make_unique<juce::ComboBox>();c->addItemList(juce::StringArray::fromTokens(spec.choices,"|",""),1);c->setColour(juce::ComboBox::outlineColourId,colour);c->setComponentID(spec.id);content.addAndMakeVisible(*c);combos.push_back(std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(owner.parameters,spec.id,*c));controls[static_cast<std::size_t>(i)]=std::move(c);
     } else {
         auto c=std::make_unique<juce::Slider>();c->setLookAndFeel(&look);c->setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);c->setTextBoxStyle(juce::Slider::TextBoxBelow,false,86,22);c->setColour(juce::Slider::rotarySliderFillColourId,colour);c->setComponentID(spec.id);c->setDoubleClickReturnValue(true,spec.initial);
         const bool step=spec.id.endsWith("Step"),pan=i>=baseCount&&i<swing&&(i-baseCount)%4==3;
-        if(step){c->setSliderStyle(juce::Slider::IncDecButtons);c->setTextBoxStyle(juce::Slider::TextBoxLeft,false,32,24);c->setIncDecButtonsMode(juce::Slider::incDecButtonsDraggable_Vertical);}
+        if(step){c->setSliderStyle(juce::Slider::LinearHorizontal);c->setTextBoxStyle(juce::Slider::TextBoxLeft,false,32,36);c->setColour(juce::Slider::trackColourId,colour);c->setColour(juce::Slider::thumbColourId,colour);c->setMouseDragSensitivity(180);}
         if(i==drive||i==motion||i==wobbleRate){c->setSliderStyle(juce::Slider::LinearHorizontal);c->setTextBoxStyle(juce::Slider::TextBoxRight,false,i==wobbleRate?58:38,22);c->setColour(juce::Slider::trackColourId,colour);c->setColour(juce::Slider::thumbColourId,colour);}
         if(pan){c->setSliderStyle(juce::Slider::LinearHorizontal);c->setTextBoxStyle(juce::Slider::NoTextBox,false,0,0);c->setColour(juce::Slider::trackColourId,colour);c->setColour(juce::Slider::thumbColourId,colour);}
         content.addAndMakeVisible(*c);sliders.push_back(std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(owner.parameters,spec.id,*c));
@@ -158,15 +159,15 @@ void DelayEditor::resized() {
         const int id=tapExtraStart+tap*tapExtraCount+field;
         const bool visible=tap==selectedTap.getSelectedId()-1;
         controls[static_cast<std::size_t>(id)]->setVisible(visible);labels[static_cast<std::size_t>(id)]->setVisible(visible);
-        if(visible)place(id,{324+field*107,(field==1||field==2||field==5||field==7)?982:948,98,(field==1||field==2||field==5||field==7)?28:104});
+        if(visible)place(id,{324+field*107,(field==1||field==2||field==5||field==7)?982:948,98,(field==1||field==7)?36:((field==2||field==5)?28:104)});
     }
-    prevPreset.setBounds(850,26,28,35);preset.setBounds(882,26,166,35);nextPreset.setBounds(1052,26,28,35);place(bypass,{1093,26,86,35},false);pattern.setBounds(645,109,195,29);grid.setBounds(39,149,801,220);
+    prevPreset.setBounds(770,20,58,40);preset.setBounds(832,20,192,40);nextPreset.setBounds(1028,20,58,40);place(bypass,{1094,20,86,40},false);pattern.setBounds(645,109,195,29);grid.setBounds(39,149,801,220);
     place(routing,{896,267,132,28},false);place(character,{1040,267,124,28},false);
     place(drive,{901,298,119,20});place(motion,{1038,298,119,20});
     place(wobbleRate,{901,343,119,20});place(wobbleShape,{1038,343,124,20});
     for(int i=0;i<tapCount;++i) {
         const int x=31+i*145,p=baseCount+i*4;
-        place(p,{x+2,405,70,26},false);place(p+1,{x+79,405,57,26},false);
+        place(p,{x+2,397,66,36},false);place(p+1,{x+70,397,74,36},false);
         place(p+2,{x+26,438,88,99},false);place(p+3,{x+13,545,116,18},false);
     }
     place(gridRate,{37,639,128,30},false);

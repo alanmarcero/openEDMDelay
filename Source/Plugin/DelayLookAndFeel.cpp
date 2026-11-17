@@ -7,7 +7,7 @@ namespace {
 
 constexpr float kArcThickness = 3.5f;
 constexpr float kCornerRadius = 4.0f;
-constexpr float kControlFontSize = 12.5f;
+constexpr float kControlFontSize = 14.0f;
 
 } // namespace
 

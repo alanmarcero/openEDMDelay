@@ -1,4 +1,4 @@
-# openEDMDelay v1.2.0
+# openEDMDelay v1.2.1
 
 An eight-tap, beat-synced delay. Routing is stereo, ping-pong, or mono. Characters are digital, tape, BBD, and lo-fi.
 
@@ -28,7 +28,7 @@ Drive applies to Tape and BBD; Motion applies to Tape. Tap pan applies to Stereo
 
 ![openEDMDelay tap performance, groove, filters, hold, and diffusion controls](docs/screenshots/openEDMDelay-performance.png)
 
-These are captures of the compiled JUCE editor, taken by the integration test with a simulated 128 BPM host. The tape illustration is original generated artwork embedded in that editor.
+These three images were captured from the compiled v1.2.1 JUCE editor on macOS on 2026-11-17 by the integration test with a simulated 128 BPM host. The tape illustration is original generated artwork embedded in that editor.
 
 Each tap also has a Chance control (0–100%), 1–8 evenly spaced ratchets across one grid unit, optional 12 dB/oct high/low-pass filters, Digital/Tape/BBD/Lo-fi colour and drive. These shape the tap output after the global feedback character. Ratchets divide the tap level to retain headroom. Chance is deterministic per source phrase and tap, so playback and host seeks reproduce the same decisions.
 
