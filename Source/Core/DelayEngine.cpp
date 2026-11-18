@@ -54,7 +54,7 @@ void DelayEngine::Filter::configure(double sampleRate,float hz,int nextSlope,boo
     else if(nextSlope!=slope&&fade==0){oldStages=stages;oldSlope=slope;stages={};slope=nextSlope;coefficients();fade=fadeLength;}
 }
 float DelayEngine::Filter::tick(float x) {
-    if(std::abs(targetLogHz-logHz)>1.e-8){logHz+=(targetLogHz-logHz)*smoothing;coefficients();}
+    if(std::abs(targetLogHz-logHz)>1.e-4){logHz+=(targetLogHz-logHz)*smoothing;if(std::abs(targetLogHz-logHz)<=1.e-4)logHz=targetLogHz;coefficients();}
     const auto process=[](auto& chain,int order,double y) {
         const int count=order<3?std::min(order,1):(order==3?2:4);
         for(int i=0;i<count;++i) {
@@ -212,7 +212,10 @@ void DelayEngine::process(float* left,float* right,int frames,const Settings& s,
                     v=std::tanh(v*(1+4*amount))/(1+1.5f*amount);
                     tapTone[j][ch]+=tapToneCoefficient[j]*(v-tapTone[j][ch]);v=tapTone[j][ch];
                 }
-                shaped[ch]=tapLp[j][ch].tick(tapHp[j][ch].tick(v));
+                if(tap.filter||tapHp[j][ch].fade>0||tapLp[j][ch].fade>0) {
+                    v=tapLp[j][ch].tick(tapHp[j][ch].tick(v));
+                }
+                shaped[ch]=v;
             }
             l=shaped[0];r=shaped[1];
             if(s.routing==Routing::pingPong) {if(j%2)std::swap(l,r);}
@@ -289,14 +292,19 @@ void DelayEngine::process(float* left,float* right,int frames,const Settings& s,
             const float valA=whole<wetValid?hist[idxA]:0.f,valB=whole+1<wetValid?hist[idxB]:0.f;
             wet[static_cast<std::size_t>(delayedCh)]=valA+(valB-valA)*part;
         }
-        const float releaseHoldScale=1.f+duckHold*3.f;
-        const float heldRelease=static_cast<float>(std::exp(-1/(beatSamples*rate(s.duckRate)*releaseHoldScale)));
-        const float peak=std::max(std::abs(dryL),std::abs(dryR)),coeff=peak>envelope?attack:heldRelease;
-        envelope=peak+(envelope-peak)*coeff;
-        const double duckPhase=fraction(phase/rate(s.duckRate)+1.e-9);
-        const double holdFrac=duckHold*.55;
-        const double shapedPhase=duckPhase<=holdFrac?0.:(duckPhase-holdFrac)/std::max(1.e-4,1.-holdFrac);
-        lastDuck=s.inputDuck?std::exp(-duck*envelope*24):1-duck*static_cast<float>(std::pow(1-shapedPhase,3));
+        if(duck>1.e-5f){
+            const float releaseHoldScale=1.f+duckHold*3.f;
+            const float heldRelease=static_cast<float>(std::exp(-1/(beatSamples*rate(s.duckRate)*releaseHoldScale)));
+            const float peak=std::max(std::abs(dryL),std::abs(dryR)),coeff=peak>envelope?attack:heldRelease;
+            envelope=peak+(envelope-peak)*coeff;
+            const double duckPhase=fraction(phase/rate(s.duckRate)+1.e-9);
+            const double holdFrac=duckHold*.55;
+            const double shapedPhase=duckPhase<=holdFrac?0.:(duckPhase-holdFrac)/std::max(1.e-4,1.-holdFrac);
+            const float u=static_cast<float>(1.-shapedPhase);
+            lastDuck=s.inputDuck?std::exp(-duck*envelope*24):1-duck*(u*u*u);
+        }else{
+            lastDuck=1.f;
+        }
         const float mid=(wet[0]+wet[1])*.5f,side=(wet[0]-wet[1])*.5f*width;
         wetL=(mid+side)*lastDuck;wetR=(mid-side)*lastDuck;
         if(s.routing==Routing::mono)wetL=wetR=mid*lastDuck;

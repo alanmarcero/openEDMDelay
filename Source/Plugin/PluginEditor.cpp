@@ -251,6 +251,12 @@ void DelayEditor::timerCallback() {
     controls[tempo]->setEnabled(!owner.hostSync.load());controls[motion]->setEnabled(s.character==Character::tape);
     controls[wobbleRate]->setEnabled(s.character==Character::tape);controls[wobbleShape]->setEnabled(s.character==Character::tape);
     controls[diffusionSize]->setEnabled(s.diffusion>0);
-    controls[drive]->setEnabled(s.character==Character::tape||s.character==Character::bbd);grid.repaint();content.repaint();
+    controls[drive]->setEnabled(s.character==Character::tape||s.character==Character::bbd);
+    grid.repaint();
+    content.repaint(440, 24, 195, 32);
+    content.repaint(894, 106, 272, 92);
+    content.repaint(770, 618, 104, 10);
+    content.repaint(628, 854, 150, 20);
+    content.repaint(922, 645, 242, 10);
 }
 }
