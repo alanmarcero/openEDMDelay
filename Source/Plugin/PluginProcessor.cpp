@@ -101,66 +101,83 @@ struct Program {
 };
 constexpr int tapExtra(int tap,int field) {return tapExtraStart+(tap-1)*tapExtraCount+field;}
 const Program bank[]{
-    {"Lead / Signal Glass",    2,2,Routing::stereo,Character::digital,34,32,260,10800,{{duck,38},{duckMode,1},{decay,33},{width,92}}},
-    {"Lead / Second Voice",    1,5,Routing::pingPong,Character::tape,42,29,240,7800,{{motion,22},{drive,19},{duck,43},{duckMode,1}}},
-    {"Lead / Prism Row",       7,0,Routing::stereo,Character::digital,29,35,460,12600,{{decay,41},{diffusion,12},{tapExtra(5,1),1}}},
-    {"Lead / Struck Silver",   0,8,Routing::stereo,Character::bbd,39,27,380,6400,{{drive,32},{diffusion,21},{diffusionSize,8}}},
-    {"Lead / Overpass",        5,6,Routing::stereo,Character::tape,45,34,310,8900,{{motion,32},{wobbleRate,.72f},{patternMorph,12},{tapExtra(3,7),7}}},
-    {"Lead / Answering Arc",   6,3,Routing::pingPong,Character::digital,33,31,330,9900,{{duck,46},{duckMode,1},{tapExtra(6,1),2}}},
-    {"Groove / Back Door",     3,2,Routing::stereo,Character::bbd,25,28,210,5000,{{groove,1},{drive,39},{duck,16},{tapExtra(2,0),78}}},
-    {"Groove / Ghost Step",    9,10,Routing::stereo,Character::loFi,21,30,420,6200,{{swing,32},{glitch,2},{glitchRate,0},{glitchAmount,30},{tapExtra(4,0),56}}},
-    {"Groove / Cork Heel",     0,1,Routing::mono,Character::tape,17,23,180,4300,{{drive,48},{motion,9},{duck,10}}},
-    {"Groove / Shuffle Bar",   7,2,Routing::stereo,Character::digital,26,31,340,8300,{{groove,1},{decay,38},{tapExtra(6,1),1},{tapExtra(8,0),61}}},
-    {"Groove / Three Chairs",  4,4,Routing::pingPong,Character::bbd,32,29,230,6100,{{duck,32},{drive,34},{diffusion,14}}},
-    {"Groove / Pocket Skip",  10,1,Routing::stereo,Character::tape,24,28,370,7350,{{groove,2},{motion,13},{tapExtra(3,0),65},{tapExtra(5,1),1}}},
-    {"Dub / Send Spring",      8,4,Routing::stereo,Character::tape,66,39,145,3600,{{drive,53},{motion,37},{diffusion,46},{diffusionSize,17}}},
-    {"Dub / Low Ceiling",      0,7,Routing::mono,Character::bbd,62,34,95,2600,{{drive,61},{lpSlope,3},{diffusion,23},{duck,14}}},
-    {"Dub / Empty Stair",      1,9,Routing::pingPong,Character::digital,51,35,260,5600,{{decay,45},{diffusion,31},{diffusionSize,21}}},
-    {"Dub / Brass Rail",       4,11,Routing::stereo,Character::bbd,55,33,190,4150,{{drive,52},{tapExtra(3,2),1},{tapExtra(3,4),2350},{tapExtra(5,5),1}}},
-    {"Dub / Flaking Paint",    3,5,Routing::stereo,Character::loFi,47,36,270,4800,{{decay,35},{diffusion,19},{tapExtra(4,0),72}}},
-    {"Dub / Far Corner",       8,12,Routing::pingPong,Character::tape,58,39,205,3720,{{motion,50},{wobbleRate,.24f},{diffusion,52},{diffusionSize,23}}},
-    {"Breaks / Sidecut",       9,0,Routing::stereo,Character::digital,22,31,660,9800,{{duck,45},{duckMode,1},{tapExtra(4,1),2}}},
-    {"Breaks / Snare Relay",   4,3,Routing::pingPong,Character::digital,31,30,520,10500,{{glitch,1},{glitchRate,1},{glitchAmount,29},{tapExtra(2,1),1}}},
-    {"Breaks / Ghost Rim",     3,10,Routing::stereo,Character::bbd,23,26,440,6700,{{groove,2},{drive,28},{tapExtra(2,0),65},{tapExtra(5,0),70}}},
-    {"Breaks / Brake Roll",   11,2,Routing::stereo,Character::loFi,19,34,480,7300,{{glitch,2},{glitchAmount,40},{glitchRate,1},{tapExtra(7,1),2}}},
-    {"Breaks / Needle Drop",   0,11,Routing::mono,Character::digital,26,25,750,9400,{{decay,18},{duck,56},{duckMode,1}}},
-    {"Breaks / Switch Hitter",10,6,Routing::pingPong,Character::tape,28,32,410,7700,{{wobbleRate,1.8f},{motion,21},{tapExtra(4,7),6},{patternMorph,28}}},
-    {"Glitch / Slice Index",   9,1,Routing::stereo,Character::loFi,37,44,370,7900,{{glitch,2},{glitchRate,2},{glitchAmount,74},{tapExtra(6,1),2}}},
-    {"Glitch / Fold Back",     6,7,Routing::pingPong,Character::digital,43,43,285,8350,{{glitch,3},{glitchRate,4},{glitchAmount,65},{diffusion,20}}},
-    {"Glitch / Shutter",       7,0,Routing::stereo,Character::digital,27,40,620,11600,{{glitch,1},{glitchRate,10},{glitchAmount,87},{duck,15}}},
-    {"Glitch / Torn Splice",  11,3,Routing::stereo,Character::tape,32,39,340,6600,{{glitch,2},{glitchRate,1},{glitchAmount,55},{motion,56},{wobbleShape,4}}},
-    {"Glitch / Carbon Copy",   1,5,Routing::mono,Character::loFi,46,38,310,4900,{{glitch,3},{glitchRate,6},{glitchAmount,51},{tapExtra(3,1),1}}},
-    {"Glitch / Crosscut",      5,10,Routing::stereo,Character::bbd,33,42,490,8100,{{glitch,1},{glitchRate,3},{glitchAmount,67},{drive,49},{tapExtra(5,0),80}}},
-    {"Space / Double Horizon", 1,13,Routing::pingPong,Character::tape,52,38,260,6300,{{motion,34},{wobbleRate,.18f},{diffusion,64},{diffusionSize,25}}},
-    {"Space / Long Exposure",  0,15,Routing::stereo,Character::digital,48,46,360,10000,{{diffusion,76},{diffusionSize,29},{duck,56},{duckMode,1}}},
-    {"Space / Eight Windows",  7,4,Routing::stereo,Character::bbd,44,36,230,6100,{{drive,30},{diffusion,56},{decay,39},{tapExtra(6,2),1},{tapExtra(6,4),3500}}},
-    {"Space / Half Light",     2,9,Routing::stereo,Character::tape,55,40,220,4700,{{motion,47},{wobbleShape,1},{diffusion,49},{diffusionSize,18}}},
-    {"Space / Night Ferry",    8,14,Routing::mono,Character::tape,49,35,185,3900,{{drive,45},{motion,38},{diffusion,61},{diffusionSize,22}}},
-    {"Space / Vanishing Line", 5,8,Routing::stereo,Character::digital,42,43,440,9300,{{glitch,3},{glitchRate,7},{glitchAmount,26},{diffusion,55},{decay,52}}},
-    {"Lead / Halo Cascade",    3,2,Routing::pingPong,Character::digital,46,35,310,13200,{{shimmer,42},{diffusion,28},{diffusionSize,15},{duck,36},{duckMode,1},{duckHold,30}}},
-    {"Lead / Neon Ribbon",     4,5,Routing::stereo,Character::tape,40,33,280,9400,{{motion,26},{wobbleRate,.85f},{stereoOffset,6.5f},{duck,40},{duckMode,1}}},
-    {"Lead / Crystal Spire",   1,6,Routing::stereo,Character::digital,52,37,420,14500,{{shimmer,58},{diffusion,38},{diffusionSize,20},{width,98}}},
-    {"Lead / Velvet Pluck",    2,4,Routing::pingPong,Character::bbd,36,30,220,6800,{{drive,29},{stereoOffset,-4.5f},{duck,32},{duckHold,25}}},
-    {"Groove / Offbeat Snap",  5,3,Routing::pingPong,Character::digital,28,31,350,9100,{{groove,1},{duck,48},{duckHold,45},{stereoOffset,3.5f}}},
-    {"Groove / Garage Step",   6,2,Routing::stereo,Character::tape,31,29,290,7100,{{swing,44},{drive,35},{motion,18},{tapExtra(2,1),1}}},
-    {"Groove / Bassline Tuck", 8,7,Routing::mono,Character::bbd,22,27,160,4200,{{drive,52},{duck,64},{duckMode,1},{duckHold,55}}},
-    {"Groove / Polyrhythm Bounce",11,4,Routing::stereo,Character::digital,35,32,390,10400,{{groove,2},{patternMorph,35},{stereoOffset,-7.f},{tapExtra(4,0),75}}},
-    {"Dub / King Tubby Vault", 8,8,Routing::stereo,Character::tape,72,41,130,3200,{{drive,64},{motion,44},{wobbleRate,.32f},{diffusion,54},{diffusionSize,24}}},
-    {"Dub / Reggae Siren",     0,5,Routing::pingPong,Character::bbd,68,38,240,4600,{{drive,58},{shimmer,22},{diffusion,35},{stereoOffset,8.f}}},
-    {"Dub / Concrete Tank",    2,10,Routing::stereo,Character::loFi,59,36,210,3900,{{decay,42},{diffusion,62},{diffusionSize,26},{duck,22}}},
-    {"Dub / Smoked Tape",      9,4,Routing::stereo,Character::tape,63,37,175,3450,{{drive,60},{motion,52},{wobbleShape,3},{stereoOffset,-5.5f}}},
-    {"Breaks / Amen Chopper",  7,1,Routing::stereo,Character::digital,29,34,540,11200,{{glitch,2},{glitchRate,2},{glitchAmount,48},{duck,35},{duckHold,40}}},
-    {"Breaks / Jungle Rattler",10,3,Routing::pingPong,Character::loFi,34,33,490,8200,{{glitch,1},{glitchRate,1},{glitchAmount,36},{tapExtra(1,1),3},{tapExtra(3,1),2}}},
-    {"Breaks / Hoovers & Horns",4,5,Routing::stereo,Character::tape,41,35,360,7800,{{drive,46},{motion,28},{shimmer,26},{stereoOffset,9.f}}},
-    {"Breaks / Neuro Scatter", 6,0,Routing::pingPong,Character::digital,27,32,680,12800,{{groove,2},{glitch,3},{glitchRate,3},{glitchAmount,42},{stereoOffset,-6.f}}},
-    {"Glitch / Granular Cloud",3,2,Routing::stereo,Character::digital,49,45,390,11900,{{glitch,3},{glitchRate,2},{glitchAmount,62},{shimmer,48},{diffusion,44}}},
-    {"Glitch / Data Moshing",  8,1,Routing::pingPong,Character::loFi,38,42,450,7400,{{glitch,2},{glitchRate,0},{glitchAmount,80},{wobbleShape,4},{motion,40}}},
-    {"Glitch / Buffer Flip",   11,4,Routing::stereo,Character::digital,44,41,320,9600,{{glitch,3},{glitchRate,5},{glitchAmount,70},{stereoOffset,11.f},{duckHold,35}}},
-    {"Glitch / Cyber Ratchet", 5,2,Routing::pingPong,Character::bbd,36,40,510,8600,{{glitch,1},{glitchRate,2},{glitchAmount,68},{tapExtra(1,1),4},{tapExtra(2,1),3}}},
-    {"Space / Astral Shimmer", 7,12,Routing::stereo,Character::digital,64,46,340,13600,{{shimmer,74},{diffusion,82},{diffusionSize,28},{stereoOffset,12.f},{duck,42},{duckMode,1}}},
-    {"Space / Cathedral Freeze",1,14,Routing::pingPong,Character::tape,60,44,260,8400,{{shimmer,52},{diffusion,78},{diffusionSize,30},{motion,30},{wobbleRate,.16f}}},
-    {"Space / Nebula Drift",   5,9,Routing::stereo,Character::bbd,56,42,210,5900,{{shimmer,36},{diffusion,68},{diffusionSize,24},{drive,34},{stereoOffset,-9.5f}}},
-    {"Space / Borealis Veil",  6,13,Routing::pingPong,Character::digital,58,45,380,12200,{{shimmer,65},{diffusion,72},{diffusionSize,27},{duck,50},{duckMode,1},{duckHold,48}}}
+    // Uplifting (16)
+    {"Uplifting / Signal Glass",     2, 2, Routing::stereo,   Character::digital, 34, 32, 260, 10800, {{duck,38},{duckMode,1},{decay,33},{width,92}}},
+    {"Uplifting / Halo Cascade",     3, 2, Routing::pingPong, Character::digital, 46, 35, 310, 13200, {{shimmer,42},{diffusion,28},{diffusionSize,15},{duck,36},{duckMode,1},{duckHold,30}}},
+    {"Uplifting / Crystal Spire",    1, 6, Routing::stereo,   Character::digital, 52, 37, 420, 14500, {{shimmer,58},{diffusion,38},{diffusionSize,20},{width,98}}},
+    {"Uplifting / Neon Ribbon",      4, 5, Routing::stereo,   Character::tape,    40, 33, 280,  9400, {{motion,26},{wobbleRate,.85f},{stereoOffset,6.5f},{duck,40},{duckMode,1}}},
+    {"Uplifting / Answering Arc",    6, 3, Routing::pingPong, Character::digital, 33, 31, 330,  9900, {{duck,46},{duckMode,1},{tapExtra(6,1),2}}},
+    {"Uplifting / Euphoria Throw",   5, 5, Routing::pingPong, Character::digital, 48, 36, 360, 13400, {{shimmer,38},{diffusion,34},{diffusionSize,18},{duck,42},{duckMode,1},{duckHold,38}}},
+    {"Uplifting / Astral Shimmer",   7,12, Routing::stereo,   Character::digital, 64, 46, 340, 13600, {{shimmer,74},{diffusion,82},{diffusionSize,28},{stereoOffset,12.f},{duck,42},{duckMode,1}}},
+    {"Uplifting / Borealis Veil",    6,13, Routing::pingPong, Character::digital, 58, 45, 380, 12200, {{shimmer,65},{diffusion,72},{diffusionSize,27},{duck,50},{duckMode,1},{duckHold,48}}},
+    {"Uplifting / Pure 138 Dotted",  2, 5, Routing::stereo,   Character::digital, 38, 33, 300, 11800, {{duck,48},{duckMode,1},{stereoOffset,-3.5f},{width,96}}},
+    {"Uplifting / Cathedral Lift",   1,14, Routing::pingPong, Character::tape,    60, 44, 260,  8400, {{shimmer,52},{diffusion,78},{diffusionSize,30},{motion,30},{wobbleRate,.16f}}},
+    {"Uplifting / Long Exposure",    0,15, Routing::stereo,   Character::digital, 48, 46, 360, 10000, {{diffusion,76},{diffusionSize,29},{duck,56},{duckMode,1}}},
+    {"Uplifting / Starlight Fan",   10, 8, Routing::pingPong, Character::digital, 44, 34, 340, 12400, {{shimmer,46},{diffusion,42},{diffusionSize,21},{stereoOffset,7.5f},{duck,38}}},
+    {"Uplifting / Skyward Pluck",    4, 4, Routing::pingPong, Character::bbd,     35, 30, 240,  7600, {{drive,28},{stereoOffset,-5.f},{duck,34},{duckHold,28}}},
+    {"Uplifting / Prism Row",        7, 0, Routing::stereo,   Character::digital, 29, 35, 460, 12600, {{decay,41},{diffusion,12},{tapExtra(5,1),1}}},
+    {"Uplifting / Sunrise Chorus",   3,11, Routing::stereo,   Character::tape,    47, 36, 290, 10200, {{shimmer,30},{motion,24},{diffusion,48},{diffusionSize,19},{width,96}}},
+    {"Uplifting / Horizon Swell",    8, 9, Routing::pingPong, Character::digital, 54, 40, 320, 12800, {{shimmer,54},{diffusion,66},{diffusionSize,24},{duck,44},{duckMode,1}}},
+
+    // Rolling (8)
+    {"Rolling / Offbeat Snap",       5, 3, Routing::pingPong, Character::digital, 28, 31, 350,  9100, {{groove,1},{duck,48},{duckHold,45},{stereoOffset,3.5f}}},
+    {"Rolling / Pocket Skip",       10, 1, Routing::stereo,   Character::tape,    24, 28, 370,  7350, {{groove,2},{motion,13},{tapExtra(3,0),65},{tapExtra(5,1),1}}},
+    {"Rolling / Bassline Tuck",      8, 7, Routing::mono,     Character::bbd,     22, 27, 160,  4200, {{drive,52},{duck,64},{duckMode,1},{duckHold,55}}},
+    {"Rolling / Three Chairs",       4, 4, Routing::pingPong, Character::bbd,     32, 29, 230,  6100, {{duck,32},{drive,34},{diffusion,14}}},
+    {"Rolling / Shuffle Bar",        7, 2, Routing::stereo,   Character::digital, 26, 31, 340,  8300, {{groove,1},{decay,38},{tapExtra(6,1),1},{tapExtra(8,0),61}}},
+    {"Rolling / Garage Step",        6, 2, Routing::stereo,   Character::tape,    31, 29, 290,  7100, {{swing,44},{drive,35},{motion,18},{tapExtra(2,1),1}}},
+    {"Rolling / Polyrhythm Bounce", 11, 4, Routing::stereo,   Character::digital, 35, 32, 390, 10400, {{groove,2},{patternMorph,35},{stereoOffset,-7.f},{tapExtra(4,0),75}}},
+    {"Rolling / Back Door",          3, 2, Routing::stereo,   Character::bbd,     25, 28, 210,  5000, {{groove,1},{drive,39},{duck,16},{tapExtra(2,0),78}}},
+
+    // Progressive (8)
+    {"Progressive / Double Horizon", 1,13, Routing::pingPong, Character::tape,    52, 38, 260,  6300, {{motion,34},{wobbleRate,.18f},{diffusion,64},{diffusionSize,25}}},
+    {"Progressive / Half Light",     2, 9, Routing::stereo,   Character::tape,    55, 40, 220,  4700, {{motion,47},{wobbleShape,1},{diffusion,49},{diffusionSize,18}}},
+    {"Progressive / Nebula Drift",   5, 9, Routing::stereo,   Character::bbd,     56, 42, 210,  5900, {{shimmer,36},{diffusion,68},{diffusionSize,24},{drive,34},{stereoOffset,-9.5f}}},
+    {"Progressive / Night Ferry",    8,14, Routing::mono,     Character::tape,    49, 35, 185,  3900, {{drive,45},{motion,38},{diffusion,61},{diffusionSize,22}}},
+    {"Progressive / Eight Windows",  7, 4, Routing::stereo,   Character::bbd,     44, 36, 230,  6100, {{drive,30},{diffusion,56},{decay,39},{tapExtra(6,2),1},{tapExtra(6,4),3500}}},
+    {"Progressive / Velvet Pluck",   2, 4, Routing::pingPong, Character::bbd,     36, 30, 220,  6800, {{drive,29},{stereoOffset,-4.5f},{duck,32},{duckHold,25}}},
+    {"Progressive / Vanishing Line", 5, 8, Routing::stereo,   Character::digital, 42, 43, 440,  9300, {{glitch,3},{glitchRate,7},{glitchAmount,26},{diffusion,55},{decay,52}}},
+    {"Progressive / Far Corner",     8,12, Routing::pingPong, Character::tape,    58, 39, 205,  3720, {{motion,50},{wobbleRate,.24f},{diffusion,52},{diffusionSize,23}}},
+
+    // Psy (8)
+    {"Psy / Triplet Fan",           10,10, Routing::stereo,   Character::digital, 36, 38, 420, 10800, {{glitch,1},{glitchRate,3},{glitchAmount,42},{stereoOffset,5.5f}}},
+    {"Psy / Cyber Ratchet",          5, 2, Routing::pingPong, Character::bbd,     36, 40, 510,  8600, {{glitch,1},{glitchRate,2},{glitchAmount,68},{tapExtra(1,1),4},{tapExtra(2,1),3}}},
+    {"Psy / Fold Back",              6, 7, Routing::pingPong, Character::digital, 43, 43, 285,  8350, {{glitch,3},{glitchRate,4},{glitchAmount,65},{diffusion,20}}},
+    {"Psy / Granular Cloud",         3, 2, Routing::stereo,   Character::digital, 49, 45, 390, 11900, {{glitch,3},{glitchRate,2},{glitchAmount,62},{shimmer,48},{diffusion,44}}},
+    {"Psy / Buffer Flip",           11, 4, Routing::stereo,   Character::digital, 44, 41, 320,  9600, {{glitch,3},{glitchRate,5},{glitchAmount,70},{stereoOffset,11.f},{duckHold,35}}},
+    {"Psy / Laser Comb",             7, 0, Routing::pingPong, Character::digital, 62, 39, 480, 13400, {{diffusion,18},{shimmer,24},{decay,28},{width,95}}},
+    {"Psy / Acid Return",            9, 1, Routing::stereo,   Character::bbd,     42, 37, 360,  7800, {{drive,54},{glitch,2},{glitchRate,1},{glitchAmount,38}}},
+    {"Psy / Spiral Matrix",          4, 6, Routing::pingPong, Character::tape,    48, 36, 310, 10200, {{patternMorph,45},{motion,32},{wobbleRate,2.2f},{tapExtra(4,7),12}}},
+
+    // Tech (8)
+    {"Tech / Shutter",               7, 0, Routing::stereo,   Character::digital, 27, 40, 620, 11600, {{glitch,1},{glitchRate,10},{glitchAmount,87},{duck,15}}},
+    {"Tech / Cork Heel",             0, 1, Routing::mono,     Character::tape,    17, 23, 180,  4300, {{drive,48},{motion,9},{duck,10}}},
+    {"Tech / Ghost Step",            9,10, Routing::stereo,   Character::loFi,    21, 30, 420,  6200, {{swing,32},{glitch,2},{glitchRate,0},{glitchAmount,30},{tapExtra(4,0),56}}},
+    {"Tech / Slice Index",           9, 1, Routing::stereo,   Character::loFi,    37, 44, 370,  7900, {{glitch,2},{glitchRate,2},{glitchAmount,74},{tapExtra(6,1),2}}},
+    {"Tech / Carbon Copy",           1, 5, Routing::mono,     Character::loFi,    46, 38, 310,  4900, {{glitch,3},{glitchRate,6},{glitchAmount,51},{tapExtra(3,1),1}}},
+    {"Tech / Data Moshing",          8, 1, Routing::pingPong, Character::loFi,    38, 42, 450,  7400, {{glitch,2},{glitchRate,0},{glitchAmount,80},{wobbleShape,4},{motion,40}}},
+    {"Tech / Torn Splice",          11, 3, Routing::stereo,   Character::tape,    32, 39, 340,  6600, {{glitch,2},{glitchRate,1},{glitchAmount,55},{motion,56},{wobbleShape,4}}},
+    {"Tech / Concrete Tank",         2,10, Routing::stereo,   Character::loFi,    59, 36, 210,  3900, {{decay,42},{diffusion,62},{diffusionSize,26},{duck,22}}},
+
+    // Bass & Breaks (8)
+    {"Bass & Breaks / Amen Chopper", 7, 1, Routing::stereo,   Character::digital, 29, 34, 540, 11200, {{glitch,2},{glitchRate,2},{glitchAmount,48},{duck,35},{duckHold,40}}},
+    {"Bass & Breaks / Jungle Rattler",10,3,Routing::pingPong, Character::loFi,    34, 33, 490,  8200, {{glitch,1},{glitchRate,1},{glitchAmount,36},{tapExtra(1,1),3},{tapExtra(3,1),2}}},
+    {"Bass & Breaks / Neuro Scatter",6, 0, Routing::pingPong, Character::digital, 27, 32, 680, 12800, {{groove,2},{glitch,3},{glitchRate,3},{glitchAmount,42},{stereoOffset,-6.f}}},
+    {"Bass & Breaks / Sidecut",      9, 0, Routing::stereo,   Character::digital, 22, 31, 660,  9800, {{duck,45},{duckMode,1},{tapExtra(4,1),2}}},
+    {"Bass & Breaks / Snare Relay",  4, 3, Routing::pingPong, Character::digital, 31, 30, 520, 10500, {{glitch,1},{glitchRate,1},{glitchAmount,29},{tapExtra(2,1),1}}},
+    {"Bass & Breaks / Brake Roll",  11, 2, Routing::stereo,   Character::loFi,    19, 34, 480,  7300, {{glitch,2},{glitchAmount,40},{glitchRate,1},{tapExtra(7,1),2}}},
+    {"Bass & Breaks / Switch Hit",  10, 6, Routing::pingPong, Character::tape,    28, 32, 410,  7700, {{wobbleRate,1.8f},{motion,21},{tapExtra(4,7),6},{patternMorph,28}}},
+    {"Bass & Breaks / Crosscut",     5,10, Routing::stereo,   Character::bbd,     33, 42, 490,  8100, {{glitch,1},{glitchRate,3},{glitchAmount,67},{drive,49},{tapExtra(5,0),80}}},
+
+    // Classic (8)
+    {"Classic / Send Spring",        8, 4, Routing::stereo,   Character::tape,    66, 39, 145,  3600, {{drive,53},{motion,37},{diffusion,46},{diffusionSize,17}}},
+    {"Classic / King Tubby",         8, 8, Routing::stereo,   Character::tape,    72, 41, 130,  3200, {{drive,64},{motion,44},{wobbleRate,.32f},{diffusion,54},{diffusionSize,24}}},
+    {"Classic / Low Ceiling",        0, 7, Routing::mono,     Character::bbd,     62, 34,  95,  2600, {{drive,61},{lpSlope,3},{diffusion,23},{duck,14}}},
+    {"Classic / Brass Rail",         4,11, Routing::stereo,   Character::bbd,     55, 33, 190,  4150, {{drive,52},{tapExtra(3,2),1},{tapExtra(3,4),2350},{tapExtra(5,5),1}}},
+    {"Classic / Smoked Tape",        9, 4, Routing::stereo,   Character::tape,    63, 37, 175,  3450, {{drive,60},{motion,52},{wobbleShape,3},{stereoOffset,-5.5f}}},
+    {"Classic / Struck Silver",      0, 8, Routing::stereo,   Character::bbd,     39, 27, 380,  6400, {{drive,32},{diffusion,21},{diffusionSize,8}}},
+    {"Classic / Overpass",           5, 6, Routing::stereo,   Character::tape,    45, 34, 310,  8900, {{motion,32},{wobbleRate,.72f},{patternMorph,12},{tapExtra(3,7),7}}},
+    {"Classic / Empty Stair",        1, 9, Routing::pingPong, Character::digital, 51, 35, 260,  5600, {{decay,45},{diffusion,31},{diffusionSize,21}}}
 };
 }
 
@@ -202,7 +219,7 @@ void DelayProcessor::setCurrentProgram(int index) {
     resetPending.store(true);
 }
 void DelayProcessor::getStateInformation(juce::MemoryBlock& block) {
-    auto state=parameters.copyState();state.setProperty("program",program.load(),nullptr);state.setProperty("programBank",oldBank.load()?0:1,nullptr);
+    auto state=parameters.copyState();state.setProperty("program",program.load(),nullptr);state.setProperty("programBank",oldBank.load()?0:2,nullptr);
     if(auto xml=state.createXml())copyXmlToBinary(*xml,block);
 }
 void DelayProcessor::setStateInformation(const void* data,int size) {
@@ -223,7 +240,7 @@ void DelayProcessor::setStateInformation(const void* data,int size) {
                 juce::ValueTree child("PARAM");child.setProperty("id",spec.id,nullptr);child.setProperty("value",spec.initial,nullptr);state.appendChild(child,nullptr);
             } else if(matches!=1)return;
         }
-        parameters.replaceState(state);oldBank.store(static_cast<int>(state.getProperty("programBank",0))!=1);program.store(juce::jlimit(0,getNumPrograms()-1,static_cast<int>(state.getProperty("program",0))));resetPending.store(true);
+        parameters.replaceState(state);oldBank.store(static_cast<int>(state.getProperty("programBank",0))!=2);program.store(juce::jlimit(0,getNumPrograms()-1,static_cast<int>(state.getProperty("program",0))));resetPending.store(true);
     }
 }
 }
