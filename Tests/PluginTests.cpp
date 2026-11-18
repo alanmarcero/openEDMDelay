@@ -134,7 +134,7 @@ static void bankAudio() {
         if(writer) require(writer->writeFromAudioSampleBuffer(wave,0,frames),"Impulse export failed");
         require(signatures.insert(signature).second,"Two factory programs produced identical wet echoes");
     }
-    std::cout<<"60 distinct impulse responses at 160 BPM, first echoes "<<minimum<<" to "<<maximum<<" s\n";
+    std::cout<<"64 distinct impulse responses at 160 BPM, first echoes "<<minimum<<" to "<<maximum<<" s\n";
     require(patternNames().size()==12,"Rhythm template count changed");
     std::set<std::array<int,tapCount>> shapes;
     p.setPlainValue(feedback,64);
@@ -171,7 +171,8 @@ void ui(const juce::File& destination){
     auto* previous=dynamic_cast<juce::TextButton*>(find(*e,"prevPreset"));
     auto* next=dynamic_cast<juce::TextButton*>(find(*e,"nextPreset"));
     require(browser&&previous&&next,"Missing preset browser controls");
-    previous->onClick();require(p.getCurrentProgram()==59,"Previous failed to wrap");
+    require(browser->getRootMenu()->getNumItems()==7,"Preset menu should group presets into 7 dance styles");
+    previous->onClick();require(p.getCurrentProgram()==63,"Previous failed to wrap");
     next->onClick();require(p.getCurrentProgram()==0,"Next failed to wrap");
     browser->setSelectedId(13,juce::sendNotificationSync);
     require(p.getCurrentProgram()==12,"Preset menu did not update the processor");
@@ -181,7 +182,7 @@ void ui(const juce::File& destination){
     require(initialUnit,"Initial knob value is missing its unit");
     for(int i=0;i<parameterCount;++i){const auto& spec=parameterSpecs()[static_cast<std::size_t>(i)];auto* c=find(*e,spec.id);require(c!=nullptr,("Missing control: "+spec.id).toRawUTF8());if(auto* s=dynamic_cast<juce::Slider*>(c))s->setValue(spec.min+(spec.max-spec.min)*.6,juce::sendNotificationSync);else if(auto* box=dynamic_cast<juce::ComboBox*>(c))box->setSelectedId(box->getNumItems(),juce::sendNotificationSync);else if(auto* button=dynamic_cast<juce::Button*>(c))button->setToggleState(true,juce::sendNotificationSync);else require(false,"Unknown control");}
     require(p.values[mix]->load()==60,"Mix knob disconnected");require(p.values[baseCount+1]->load()==10,"Tap step disconnected");require(p.values[hpSlope]->load()==4,"Slope selector disconnected");
-    require(p.getNumPrograms()==60,"EDM factory bank must contain 60 programs");
+    require(p.getNumPrograms()==64,"EDM factory bank must contain 64 programs");
     require(rateNames().size()==16,"EDM grid must expose 16 host-synced divisions");
     juce::AudioBuffer<float> b(2,256);b.clear();juce::MidiBuffer midi;
     Host host;host.info.setBpm(128);host.info.setPpqPosition(1.35);host.info.setIsPlaying(true);p.setPlayHead(&host);
@@ -210,6 +211,6 @@ void ui(const juce::File& destination){
     require(viewport!=nullptr,"Editor viewport missing during capture");
     p.setCurrentProgram(0);p.setPlainValue(diffusion,65);p.setPlainValue(diffusionSize,20);p.processBlock(b,midi);
     juce::MessageManager::getInstance()->runDispatchLoopUntil(60);viewport->setViewPosition(0,1100);save("openEDMDelay-performance.png");viewport->setViewPosition(0,0);
-    p.setCurrentProgram(24);p.processBlock(b,midi);juce::MessageManager::getInstance()->runDispatchLoopUntil(60);save("openEDMDelay-glitch.png");p.setPlayHead(nullptr);
+    p.setCurrentProgram(43);p.processBlock(b,midi);juce::MessageManager::getInstance()->runDispatchLoopUntil(60);save("openEDMDelay-glitch.png");p.setPlayHead(nullptr);
 }
 int main(int argc,char** argv){juce::ScopedJuceInitialiser_GUI gui;int errors=0;for(const auto& [name,test]:std::initializer_list<std::pair<const char*,void(*)()>>{{"factory impulse responses and rhythms",bankAudio},{"filtered tap host tail",filteredTapTail},{"diffusion host tail",diffusionHostTail},{"scrollable control access",scrollableControls},{"host audio/bypass",audio},{"session recall",recall},{"malformed parameter state",malformedState},{"preset while bypassed",presetWhileBypassed}})try{test();std::cout<<"PASS "<<name<<'\n';}catch(const std::exception& e){std::cerr<<"FAIL "<<name<<": "<<e.what()<<'\n';++errors;}try{ui(juce::File::getCurrentWorkingDirectory().getChildFile(argc>1?argv[1]:"docs/screenshots"));std::cout<<"PASS native controls and actual editor screenshots\n";}catch(const std::exception& e){std::cerr<<"FAIL UI: "<<e.what()<<'\n';++errors;}return errors?1:0;}

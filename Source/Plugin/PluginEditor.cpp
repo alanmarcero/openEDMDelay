@@ -71,8 +71,18 @@ DelayEditor::DelayEditor(DelayProcessor& p):AudioProcessorEditor(p),owner(p),gri
     for(int i=0;i<parameterCount;++i)makeControl(i);
     content.setSize(1200,1300);content.addAndMakeVisible(grid);content.addAndMakeVisible(preset);content.addAndMakeVisible(pattern);
     preset.setComponentID("preset");pattern.setComponentID("pattern");
-    for(int i=0;i<p.getNumPrograms();++i)preset.addItem(p.getProgramName(i),i+1);
-    preset.setTextWhenNothingSelected("Custom sound");preset.setTooltip("Load a factory delay program.");
+    juce::String family;
+    juce::PopupMenu sounds;
+    int programId=1;
+    for(int i=0;i<p.getNumPrograms();++i){
+        const auto name=p.getProgramName(i);
+        const auto nextFamily=name.upToFirstOccurrenceOf(" / ",false,false);
+        if(family!=nextFamily&&sounds.getNumItems()>0){preset.getRootMenu()->addSubMenu(family,sounds);sounds.clear();}
+        family=nextFamily;
+        sounds.addItem(programId++,name);
+    }
+    if(sounds.getNumItems()>0)preset.getRootMenu()->addSubMenu(family,sounds);
+    preset.setTextWhenNothingSelected("Custom sound");preset.setTooltip("Load a factory delay program across seven dance styles.");
     preset.setSelectedId(p.displayedProgram()+1,juce::dontSendNotification);
     preset.onChange=[this]{owner.setCurrentProgram(preset.getSelectedId()-1);pattern.setSelectedId(0,juce::dontSendNotification);};
     prevPreset.setComponentID("prevPreset");
