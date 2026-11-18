@@ -10,7 +10,7 @@ Build beat-synced echoes from eight taps. Use it for rhythmic repeats, stereo mo
 
 The 64 factory programs span seven dance styles: 16 **Uplifting** and eight each of **Rolling**, **Progressive**, **Psy**, **Tech**, **Bass & Breaks**, and **Classic**.
 
-Start with **Uplifting / Signal Glass** on a synth line, **Classic / Send Spring** on a short chord, or **Tech / Slice Index** on drums. The preset arrows step through the entire bank. The 12 rhythm templates in **Tap field** change tap positions, levels, and pans while keeping your grid and effects. Try **Crossfade** for a left-to-right sweep or **End Roll** for a cluster of late taps. Older sessions recall their saved settings and display **Custom sound**.
+Start with **Uplifting / Dotted Drive** on a synth line, **Classic / Tape Head Bounce** on a short chord, or **Tech / Slice Index** on drums. The preset arrows step through the entire bank. The 12 rhythm templates in **Tap field** change tap positions, levels, and pans while keeping your grid and effects. Try **Crossfade** for a left-to-right sweep or **End Roll** for a cluster of late taps. Older sessions recall their saved settings and display **Custom sound**.
 
 ## Features
 
