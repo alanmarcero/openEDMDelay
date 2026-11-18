@@ -192,9 +192,26 @@ void settledHoldInput() {
     held.l[15000]=1;held.engine.process(held.l.data()+15000,held.r.data()+15000,33000,s,{400,63000./7200,true});
     check(held.l[15900]>.99f,"Released hold does not restore input");
 }
+void shimmerHaasDuckHold() {
+    auto s=clean();s.rate=0;s.feedback=.6f;
+    Render plain(8000,12000),shimmered(8000,12000);
+    for(std::size_t i=0;i<400;++i)plain.l[i]=shimmered.l[i]=std::sin(static_cast<float>(i)*.15f)*.5f;
+    plain.run(s);
+    s.shimmer=.8f;shimmered.run(s);
+    check(plain.l!=shimmered.l&&energy(shimmered.l,1500)>0,"Shimmer pitch shift does not alter feedback loop");
+    s=clean();s.rate=0;s.stereoOffset=10.f;
+    Render haas(8000,4000);haas.l[0]=haas.r[0]=1;haas.run(s);
+    check(haas.l[500]>.9f&&haas.r[580]>.9f,"Stereo Haas offset does not delay right wet channel by 10 ms");
+    s=clean();s.rate=7;s.duck=1.f;
+    Render noHold(8000,8000),withHold(8000,8000);
+    std::fill(noHold.l.begin(),noHold.l.end(),.5f);std::fill(withHold.l.begin(),withHold.l.end(),.5f);
+    noHold.run(s);
+    s.duckHold=.8f;withHold.run(s);
+    check(energy(withHold.l,4000)<energy(noHold.l,4000),"Duck hold does not extend ducking attenuation");
+}
 int main() {
     int failed=0;
-    const std::pair<const char*,void(*)()> cases[]={{"sustained settled hold",sustainedHold},{"settled hold input rejection",settledHoldInput},{"tap probability/ratchets",tapPerformance},{"tap tone",tapTone},{"groove/morph",grooveMorph},{"diffusion",diffusion},{"wobble rate",wobbleRate},{"wobble shape",wobbleShape},{"freeze",freezeLoop},{"fast timing automation",fastTimeAutomation},{"stutter seams",stutterEdges},{"filter automation",filterAutomation},{"extended host-synced grid",extendedGridTiming},{"beat timing",timing},{"routing",routing},{"taps",taps},{"dry/reset",dryAndReset},{"filters",filters},{"effects",effects},{"stability/block size",stable}};
+    const std::pair<const char*,void(*)()> cases[]={{"shimmer, stereo Haas, and duck hold",shimmerHaasDuckHold},{"sustained settled hold",sustainedHold},{"settled hold input rejection",settledHoldInput},{"tap probability/ratchets",tapPerformance},{"tap tone",tapTone},{"groove/morph",grooveMorph},{"diffusion",diffusion},{"wobble rate",wobbleRate},{"wobble shape",wobbleShape},{"freeze",freezeLoop},{"fast timing automation",fastTimeAutomation},{"stutter seams",stutterEdges},{"filter automation",filterAutomation},{"extended host-synced grid",extendedGridTiming},{"beat timing",timing},{"routing",routing},{"taps",taps},{"dry/reset",dryAndReset},{"filters",filters},{"effects",effects},{"stability/block size",stable}};
     for(const auto& [name,test]:cases)try{test();std::cout<<"PASS "<<name<<'\n';}catch(const std::exception& e){++failed;std::cerr<<"FAIL "<<name<<": "<<e.what()<<'\n';}
     return failed?1:0;
 }

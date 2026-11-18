@@ -1,4 +1,4 @@
-# openEDMDelay v1.3.0
+# openEDMDelay v1.4.0
 
 Build beat-synced echoes from eight taps. Use it for rhythmic repeats, stereo movement, and glitch transitions.
 

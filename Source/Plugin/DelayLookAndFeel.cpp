@@ -35,6 +35,8 @@ DelayLookAndFeel::DelayLookAndFeel() {
     setColour(juce::TextEditor::textColourId, theme::kText);
     setColour(juce::TextEditor::highlightColourId, theme::kTrack);
     setColour(juce::CaretComponent::caretColourId, theme::kText);
+    setColour(juce::ScrollBar::thumbColourId, theme::kPanelEdge.brighter(0.25f));
+    setColour(juce::ScrollBar::backgroundColourId, juce::Colours::transparentBlack);
 }
 
 void DelayLookAndFeel::drawRotarySlider(juce::Graphics& g, int x, int y, int width, int height, float sliderPos,

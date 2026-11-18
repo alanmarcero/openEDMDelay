@@ -66,8 +66,8 @@ void TapGrid::mouseUp(const juce::MouseEvent&) {
 DelayEditor::DelayEditor(DelayProcessor& p):AudioProcessorEditor(p),owner(p),grid(p) {
     setLookAndFeel(&look);reel=juce::Drawable::createFromImageData(BinaryData::echoreel_svg,BinaryData::echoreel_svgSize);
     viewport.setComponentID("editorViewport");addAndMakeVisible(viewport);
-    viewport.setViewedComponent(&content,false);viewport.setScrollBarsShown(true,true);
-    viewport.setScrollBarThickness(16);content.setSize(1200,1100);
+    viewport.setViewedComponent(&content,false);viewport.setScrollBarsShown(true,false);
+    viewport.setScrollBarThickness(12);content.setSize(1200,1100);
     for(int i=0;i<parameterCount;++i)makeControl(i);
     content.setSize(1200,1300);content.addAndMakeVisible(grid);content.addAndMakeVisible(preset);content.addAndMakeVisible(pattern);
     preset.setComponentID("preset");pattern.setComponentID("pattern");
@@ -126,7 +126,7 @@ void DelayEditor::makeControl(int i) {
         if(i==drive||i==motion||i==wobbleRate){c->setSliderStyle(juce::Slider::LinearHorizontal);c->setTextBoxStyle(juce::Slider::TextBoxRight,false,i==wobbleRate?58:38,22);c->setColour(juce::Slider::trackColourId,colour);c->setColour(juce::Slider::thumbColourId,colour);}
         if(pan){c->setSliderStyle(juce::Slider::LinearHorizontal);c->setTextBoxStyle(juce::Slider::NoTextBox,false,0,0);c->setColour(juce::Slider::trackColourId,colour);c->setColour(juce::Slider::thumbColourId,colour);}
         content.addAndMakeVisible(*c);sliders.push_back(std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(owner.parameters,spec.id,*c));
-        c->textFromValueFunction=[i,step,pan,unit=spec.unit](double v){if(step)return juce::String(static_cast<int>(v));if(pan)return std::abs(v)<.01?juce::String("C"):juce::String(static_cast<int>(std::round(std::abs(v))))+(v<0?" L":" R");if(i==highPass||i==lowPass)return v>=1000?juce::String(v/1000,2)+" kHz":juce::String(static_cast<int>(std::round(v)))+" Hz";if(i==wobbleRate)return juce::String(v,2)+" Hz";return (i==output?juce::String(std::abs(v)<.005?0:v,1):juce::String(static_cast<int>(std::round(v))))+(unit=="%"?"%":" "+unit);};
+        c->textFromValueFunction=[i,step,pan,unit=spec.unit](double v){if(step)return juce::String(static_cast<int>(v));if(pan)return std::abs(v)<.01?juce::String("C"):juce::String(static_cast<int>(std::round(std::abs(v))))+(v<0?" L":" R");if(i==highPass||i==lowPass)return v>=1000?juce::String(v/1000,2)+" kHz":juce::String(static_cast<int>(std::round(v)))+" Hz";if(i==wobbleRate)return juce::String(v,2)+" Hz";if(i==stereoOffset)return juce::String(std::abs(v)<.05?0:v,1)+" ms";return (i==output?juce::String(std::abs(v)<.005?0:v,1):juce::String(static_cast<int>(std::round(v))))+(unit=="%"?"%":" "+unit);};
         c->valueFromTextFunction=[i](const juce::String& t){const double value=t.getDoubleValue();return (i==highPass||i==lowPass)&&t.containsIgnoreCase("k")?value*1000:value;};
         c->updateText();
         c->setTooltip(spec.name+". Drag to adjust; double-click to reset. Host automatable.");controls[static_cast<std::size_t>(i)]=std::move(c);
@@ -142,6 +142,9 @@ void DelayEditor::makeControl(int i) {
         if(i==wobbleShape)tooltipClient->setTooltip("Tape wobble waveform: smooth, stepped, or deterministic random movement.");
         if(i==diffusion)tooltipClient->setTooltip("Smears each echo inside the feedback loop. Higher values make repeats denser.");
         if(i==diffusionSize)tooltipClient->setTooltip("Sets the time spacing of the diffusion stages. Short settings stay compact; longer settings sound broader.");
+        if(i==shimmer)tooltipClient->setTooltip("Octave-up pitch-shifted recirculation inside the feedback loop for lush shimmer echoes.");
+        if(i==stereoOffset)tooltipClient->setTooltip("Sub-millisecond to 20 ms inter-channel Haas timing offset on the wet stereo path.");
+        if(i==duckHold)tooltipClient->setTooltip("Holds and extends the ducking envelope so echoes stay tucked during fast phrases before blooming.");
         if(i==drive)tooltipClient->setTooltip("Saturation amount for Tape and BBD characters.");
         if(i==duckMode)tooltipClient->setTooltip("Beat: rhythmic wet ducking. Input: duck echoes while the incoming audio is loud. Rate sets recovery.");
         if(i==routing)tooltipClient->setTooltip("Stereo uses tap pan. Ping Pong alternates taps and crossfeeds each phrase. Mono collapses the wet branch.");
@@ -156,13 +159,16 @@ void DelayEditor::place(int id,juce::Rectangle<int> r,bool showLabel) {
 void DelayEditor::resized() {
     viewport.setBounds(getLocalBounds());
     selectedTap.setBounds(1000,900,164,36);
-    place(swing,{30,948,80,104});place(groove,{117,962,106,28});
-    place(freeze,{117,1024,106,28});place(patternMorph,{230,948,80,104});
+    place(swing,{30,948,80,100});place(groove,{117,950,106,36});
+    place(freeze,{117,1012,106,36});place(patternMorph,{230,948,80,100});
     for(int tap=0;tap<tapCount;++tap)for(int field=0;field<tapExtraCount;++field) {
         const int id=tapExtraStart+tap*tapExtraCount+field;
         const bool visible=tap==selectedTap.getSelectedId()-1;
         controls[static_cast<std::size_t>(id)]->setVisible(visible);labels[static_cast<std::size_t>(id)]->setVisible(visible);
-        if(visible)place(id,{324+field*107,(field==1||field==2||field==5||field==7)?982:948,98,(field==1||field==7)?36:((field==2||field==5)?28:104)});
+        if(visible) {
+            const bool isChoiceOrLinear=(field==1||field==2||field==5||field==7);
+            place(id,{324+field*107,isChoiceOrLinear?1012:948,98,isChoiceOrLinear?36:100});
+        }
     }
     prevPreset.setBounds(641,20,88,40);preset.setBounds(737,20,263,40);nextPreset.setBounds(1008,20,78,40);place(bypass,{1094,20,86,40},false);pattern.setBounds(645,104,195,36);grid.setBounds(39,149,801,220);
     place(routing,{896,220,132,36},false);place(character,{1040,220,124,36},false);
@@ -173,15 +179,16 @@ void DelayEditor::resized() {
         place(p,{x+2,397,66,36},false);place(p+1,{x+70,397,74,36},false);
         place(p+2,{x+26,438,88,99},false);place(p+3,{x+13,545,116,18},false);
     }
-    place(gridRate,{37,639,128,30},false);
+    place(gridRate,{37,636,128,36},false);
     place(feedback,{30,688,88,119});place(decay,{122,688,88,119});place(tempo,{213,688,78,119});
-    place(highPass,{338,659,102,117});place(lowPass,{466,659,102,117});
-    place(hpSlope,{332,807,117,28},false);place(lpSlope,{460,807,117,28},false);
-    place(duckMode,{627,639,113,29},false);place(glitch,{754,639,113,29},false);
-    place(duck,{634,680,100,108});place(glitchAmount,{760,680,100,108});
-    place(duckRate,{627,807,113,28},false);place(glitchRate,{754,807,113,28},false);
+    place(highPass,{338,655,102,115});place(lowPass,{466,655,102,115});
+    place(hpSlope,{332,796,117,36},false);place(lpSlope,{460,796,117,36},false);
+    place(duckMode,{627,632,113,36},false);place(glitch,{754,632,113,36},false);
+    place(duck,{634,676,100,98});place(glitchAmount,{760,676,100,98});
+    place(duckRate,{627,796,113,36},false);place(glitchRate,{754,796,113,36},false);
     place(mix,{916,688,87,119});place(width,{1007,688,77,119});place(output,{1090,688,77,119});
     place(diffusion,{46,1132,92,112});place(diffusionSize,{151,1132,92,112});
+    place(shimmer,{256,1132,92,112});place(stereoOffset,{361,1132,92,112});place(duckHold,{466,1132,92,112});
 }
 void DelayEditor::paint(juce::Graphics& g) {g.fillAll(theme::kBackground);}
 void DelayEditor::paintContent(juce::Graphics& g) {
@@ -228,11 +235,11 @@ void DelayEditor::paintContent(juce::Graphics& g) {
         g.fillRoundedRectangle(774, 621, 96.f * duckAtten, 4, 2);
     }
     panel(g,{905,596,275,250},"OUTPUT",theme::kAccentOut);
-    panel(g,{20,1090,1160,190},"ECHO DIFFUSION",theme::kAccentB);
+    panel(g,{20,1090,1160,190},"ECHO DIFFUSION / SHIMMER / STEREO HAAS",theme::kAccentB);
     const float peak=juce::jlimit(0.f,1.f,owner.outputPeak.load());
-    g.setColour(theme::kTrack);g.fillRoundedRectangle(925,648,235,5,2);
+    g.setColour(theme::kPanelEdge.withAlpha(.7f));g.fillRoundedRectangle(925,648,235,5,2);
     g.setColour(theme::kAccentA);g.fillRoundedRectangle(925,648,235*peak,5,2);
-    text(g,"WET",{1021,612,80,20},10,theme::kTextDim);text(g,"0 dB",{1109,612,49,20},10,theme::kTextDim,false,juce::Justification::centredRight);
+    text(g,"WET LEVEL",{925,624,100,20},10,theme::kTextDim,true);text(g,"0 dB",{1109,624,51,20},10,theme::kTextDim,false,juce::Justification::centredRight);
     const float reduction=1-owner.duckMeter.load();
     text(g,"Duck "+juce::String(static_cast<int>(std::round(reduction*100)))+"%",{628,854,150,20},10,theme::kAccentFx);
     text(g,"BEAT SYNC ONLY   /   T = triplet   /   D = dotted",{25,854,470,20},10,theme::kTextDim);
