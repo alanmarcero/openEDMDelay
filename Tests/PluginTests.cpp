@@ -50,10 +50,12 @@ static void legacyAndPerformanceState(){
     require(std::abs(p.values[mix]->load()-73)<.0001f,"Legacy state rejected after adding parameters");
     p.setPlainValue(swing,50);p.setPlainValue(patternMorph,75);p.setPlainValue(freeze,1);
     p.setPlainValue(diffusion,35);p.setPlainValue(diffusionSize,24);p.setPlainValue(wobbleRate,2.5f);p.setPlainValue(wobbleShape,3);
+    p.setPlainValue(shimmer,45);p.setPlainValue(stereoOffset,8.5f);p.setPlainValue(duckHold,60);
     p.setPlainValue(tapExtraStart,35);p.setPlainValue(tapExtraStart+1,3);
     const auto settings=p.settings();
     require(settings.swing==.5f&&settings.morph==.75f&&settings.freeze,"Performance parameters disconnected");
     require(std::abs(settings.diffusion-.35f)<.0001f&&std::abs(settings.diffusionSize-24)<.0001f&&std::abs(settings.wobbleRate-2.5f)<.0001f&&settings.wobbleShape==WobbleShape::randomWalk,"Diffusion or wobble parameters disconnected");
+    require(std::abs(settings.shimmer-.45f)<.0001f&&std::abs(settings.stereoOffset-8.5f)<.0001f&&std::abs(settings.duckHold-.6f)<.0001f,"Shimmer, stereo offset, or duck hold parameters disconnected");
     require(std::abs(settings.taps[0].probability-.35f)<.0001f&&settings.taps[0].ratchets==4,"Tap performance parameters disconnected");
     clean(p);p.setPlainValue(tapExtraStart+7,16);p.setPlainValue(patternMorph,100);
     require(p.getTailLengthSeconds()>=8,"Host tail excludes morphed pattern");
@@ -93,7 +95,7 @@ static void scrollableControls() {
                 require(viewport->getViewArea().contains(control->getBounds()),"New tap control cannot scroll fully into view");
             }
         }
-        for(const int id:std::array<int,8>{swing,groove,freeze,patternMorph,diffusion,diffusionSize,wobbleRate,wobbleShape}) {
+        for(const int id:std::array<int,11>{swing,groove,freeze,patternMorph,diffusion,diffusionSize,wobbleRate,wobbleShape,shimmer,stereoOffset,duckHold}) {
             auto* control=find(*editor,parameterSpecs()[static_cast<std::size_t>(id)].id);
             viewport->setViewPosition(control->getX(),control->getY());
             require(viewport->getViewArea().contains(control->getBounds()),"Performance control cannot scroll fully into view");
@@ -132,7 +134,7 @@ static void bankAudio() {
         if(writer) require(writer->writeFromAudioSampleBuffer(wave,0,frames),"Impulse export failed");
         require(signatures.insert(signature).second,"Two factory programs produced identical wet echoes");
     }
-    std::cout<<"36 distinct impulse responses at 160 BPM, first echoes "<<minimum<<" to "<<maximum<<" s\n";
+    std::cout<<"60 distinct impulse responses at 160 BPM, first echoes "<<minimum<<" to "<<maximum<<" s\n";
     require(patternNames().size()==12,"Rhythm template count changed");
     std::set<std::array<int,tapCount>> shapes;
     p.setPlainValue(feedback,64);
@@ -169,7 +171,7 @@ void ui(const juce::File& destination){
     auto* previous=dynamic_cast<juce::TextButton*>(find(*e,"prevPreset"));
     auto* next=dynamic_cast<juce::TextButton*>(find(*e,"nextPreset"));
     require(browser&&previous&&next,"Missing preset browser controls");
-    previous->onClick();require(p.getCurrentProgram()==35,"Previous failed to wrap");
+    previous->onClick();require(p.getCurrentProgram()==59,"Previous failed to wrap");
     next->onClick();require(p.getCurrentProgram()==0,"Next failed to wrap");
     browser->setSelectedId(13,juce::sendNotificationSync);
     require(p.getCurrentProgram()==12,"Preset menu did not update the processor");
@@ -179,7 +181,7 @@ void ui(const juce::File& destination){
     require(initialUnit,"Initial knob value is missing its unit");
     for(int i=0;i<parameterCount;++i){const auto& spec=parameterSpecs()[static_cast<std::size_t>(i)];auto* c=find(*e,spec.id);require(c!=nullptr,("Missing control: "+spec.id).toRawUTF8());if(auto* s=dynamic_cast<juce::Slider*>(c))s->setValue(spec.min+(spec.max-spec.min)*.6,juce::sendNotificationSync);else if(auto* box=dynamic_cast<juce::ComboBox*>(c))box->setSelectedId(box->getNumItems(),juce::sendNotificationSync);else if(auto* button=dynamic_cast<juce::Button*>(c))button->setToggleState(true,juce::sendNotificationSync);else require(false,"Unknown control");}
     require(p.values[mix]->load()==60,"Mix knob disconnected");require(p.values[baseCount+1]->load()==10,"Tap step disconnected");require(p.values[hpSlope]->load()==4,"Slope selector disconnected");
-    require(p.getNumPrograms()==36,"EDM factory bank must contain 36 programs");
+    require(p.getNumPrograms()==60,"EDM factory bank must contain 60 programs");
     require(rateNames().size()==16,"EDM grid must expose 16 host-synced divisions");
     juce::AudioBuffer<float> b(2,256);b.clear();juce::MidiBuffer midi;
     Host host;host.info.setBpm(128);host.info.setPpqPosition(1.35);host.info.setIsPlaying(true);p.setPlayHead(&host);

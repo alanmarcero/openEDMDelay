@@ -24,6 +24,7 @@ struct Settings {
     float feedback = .35f, decay = .3f, highPass = 120, lowPass = 9000;
     int hpSlope = 2, lpSlope = 2;
     float drive = .25f, motion = .2f, wobbleRate = .5f, diffusion = 0, diffusionSize = 12, duck = 0;
+    float shimmer = 0, stereoOffset = 0, duckHold = 0;
     WobbleShape wobbleShape = WobbleShape::sine;
     bool inputDuck = false;
     int duckRate = 7, glitchRate = 2;
@@ -56,8 +57,8 @@ private:
     std::array<Filter,2> hp,lp;
     std::array<std::array<Filter,2>,tapCount> tapHp,tapLp;
     std::array<std::array<float,2>,tapCount> tapTone{};
-    float freezeMix=0, diffusion=0, diffusionSize=12;
-    double frozenLoop=1,wobblePhase=0;bool wasFrozen=false;
+    float freezeMix=0, diffusion=0, diffusionSize=12, shimmer=0, stereoOffset=0, duckHold=0;
+    double frozenLoop=1,wobblePhase=0,shimmerPhase=0;bool wasFrozen=false;
     std::array<float,2> tone{}, held{};
     std::array<double,tapCount> delay{}, oldDelay{}, tapeDelay{};
     std::array<float,tapCount> gain{},pan{};

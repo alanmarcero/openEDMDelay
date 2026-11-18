@@ -136,7 +136,31 @@ const Program bank[]{
     {"Space / Eight Windows",  7,4,Routing::stereo,Character::bbd,44,36,230,6100,{{drive,30},{diffusion,56},{decay,39},{tapExtra(6,2),1},{tapExtra(6,4),3500}}},
     {"Space / Half Light",     2,9,Routing::stereo,Character::tape,55,40,220,4700,{{motion,47},{wobbleShape,1},{diffusion,49},{diffusionSize,18}}},
     {"Space / Night Ferry",    8,14,Routing::mono,Character::tape,49,35,185,3900,{{drive,45},{motion,38},{diffusion,61},{diffusionSize,22}}},
-    {"Space / Vanishing Line", 5,8,Routing::stereo,Character::digital,42,43,440,9300,{{glitch,3},{glitchRate,7},{glitchAmount,26},{diffusion,55},{decay,52}}}
+    {"Space / Vanishing Line", 5,8,Routing::stereo,Character::digital,42,43,440,9300,{{glitch,3},{glitchRate,7},{glitchAmount,26},{diffusion,55},{decay,52}}},
+    {"Lead / Halo Cascade",    3,2,Routing::pingPong,Character::digital,46,35,310,13200,{{shimmer,42},{diffusion,28},{diffusionSize,15},{duck,36},{duckMode,1},{duckHold,30}}},
+    {"Lead / Neon Ribbon",     4,5,Routing::stereo,Character::tape,40,33,280,9400,{{motion,26},{wobbleRate,.85f},{stereoOffset,6.5f},{duck,40},{duckMode,1}}},
+    {"Lead / Crystal Spire",   1,6,Routing::stereo,Character::digital,52,37,420,14500,{{shimmer,58},{diffusion,38},{diffusionSize,20},{width,98}}},
+    {"Lead / Velvet Pluck",    2,4,Routing::pingPong,Character::bbd,36,30,220,6800,{{drive,29},{stereoOffset,-4.5f},{duck,32},{duckHold,25}}},
+    {"Groove / Offbeat Snap",  5,3,Routing::pingPong,Character::digital,28,31,350,9100,{{groove,1},{duck,48},{duckHold,45},{stereoOffset,3.5f}}},
+    {"Groove / Garage Step",   6,2,Routing::stereo,Character::tape,31,29,290,7100,{{swing,44},{drive,35},{motion,18},{tapExtra(2,1),1}}},
+    {"Groove / Bassline Tuck", 8,7,Routing::mono,Character::bbd,22,27,160,4200,{{drive,52},{duck,64},{duckMode,1},{duckHold,55}}},
+    {"Groove / Polyrhythm Bounce",11,4,Routing::stereo,Character::digital,35,32,390,10400,{{groove,2},{patternMorph,35},{stereoOffset,-7.f},{tapExtra(4,0),75}}},
+    {"Dub / King Tubby Vault", 8,8,Routing::stereo,Character::tape,72,41,130,3200,{{drive,64},{motion,44},{wobbleRate,.32f},{diffusion,54},{diffusionSize,24}}},
+    {"Dub / Reggae Siren",     0,5,Routing::pingPong,Character::bbd,68,38,240,4600,{{drive,58},{shimmer,22},{diffusion,35},{stereoOffset,8.f}}},
+    {"Dub / Concrete Tank",    2,10,Routing::stereo,Character::loFi,59,36,210,3900,{{decay,42},{diffusion,62},{diffusionSize,26},{duck,22}}},
+    {"Dub / Smoked Tape",      9,4,Routing::stereo,Character::tape,63,37,175,3450,{{drive,60},{motion,52},{wobbleShape,3},{stereoOffset,-5.5f}}},
+    {"Breaks / Amen Chopper",  7,1,Routing::stereo,Character::digital,29,34,540,11200,{{glitch,2},{glitchRate,2},{glitchAmount,48},{duck,35},{duckHold,40}}},
+    {"Breaks / Jungle Rattler",10,3,Routing::pingPong,Character::loFi,34,33,490,8200,{{glitch,1},{glitchRate,1},{glitchAmount,36},{tapExtra(1,1),3},{tapExtra(3,1),2}}},
+    {"Breaks / Hoovers & Horns",4,5,Routing::stereo,Character::tape,41,35,360,7800,{{drive,46},{motion,28},{shimmer,26},{stereoOffset,9.f}}},
+    {"Breaks / Neuro Scatter", 6,0,Routing::pingPong,Character::digital,27,32,680,12800,{{groove,2},{glitch,3},{glitchRate,3},{glitchAmount,42},{stereoOffset,-6.f}}},
+    {"Glitch / Granular Cloud",3,2,Routing::stereo,Character::digital,49,45,390,11900,{{glitch,3},{glitchRate,2},{glitchAmount,62},{shimmer,48},{diffusion,44}}},
+    {"Glitch / Data Moshing",  8,1,Routing::pingPong,Character::loFi,38,42,450,7400,{{glitch,2},{glitchRate,0},{glitchAmount,80},{wobbleShape,4},{motion,40}}},
+    {"Glitch / Buffer Flip",   11,4,Routing::stereo,Character::digital,44,41,320,9600,{{glitch,3},{glitchRate,5},{glitchAmount,70},{stereoOffset,11.f},{duckHold,35}}},
+    {"Glitch / Cyber Ratchet", 5,2,Routing::pingPong,Character::bbd,36,40,510,8600,{{glitch,1},{glitchRate,2},{glitchAmount,68},{tapExtra(1,1),4},{tapExtra(2,1),3}}},
+    {"Space / Astral Shimmer", 7,12,Routing::stereo,Character::digital,64,46,340,13600,{{shimmer,74},{diffusion,82},{diffusionSize,28},{stereoOffset,12.f},{duck,42},{duckMode,1}}},
+    {"Space / Cathedral Freeze",1,14,Routing::pingPong,Character::tape,60,44,260,8400,{{shimmer,52},{diffusion,78},{diffusionSize,30},{motion,30},{wobbleRate,.16f}}},
+    {"Space / Nebula Drift",   5,9,Routing::stereo,Character::bbd,56,42,210,5900,{{shimmer,36},{diffusion,68},{diffusionSize,24},{drive,34},{stereoOffset,-9.5f}}},
+    {"Space / Borealis Veil",  6,13,Routing::pingPong,Character::digital,58,45,380,12200,{{shimmer,65},{diffusion,72},{diffusionSize,27},{duck,50},{duckMode,1},{duckHold,48}}}
 };
 }
 
@@ -199,7 +223,7 @@ void DelayProcessor::setStateInformation(const void* data,int size) {
                 juce::ValueTree child("PARAM");child.setProperty("id",spec.id,nullptr);child.setProperty("value",spec.initial,nullptr);state.appendChild(child,nullptr);
             } else if(matches!=1)return;
         }
-        parameters.replaceState(state);oldBank.store(static_cast<int>(state.getProperty("programBank",0))!=1);program.store(juce::jlimit(0,35,static_cast<int>(state.getProperty("program",0))));resetPending.store(true);
+        parameters.replaceState(state);oldBank.store(static_cast<int>(state.getProperty("programBank",0))!=1);program.store(juce::jlimit(0,getNumPrograms()-1,static_cast<int>(state.getProperty("program",0))));resetPending.store(true);
     }
 }
 }
