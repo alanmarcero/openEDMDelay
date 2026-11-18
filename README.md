@@ -4,7 +4,7 @@ Build beat-synced echoes from eight taps. Use it for rhythmic repeats, stereo mo
 
 [Download the latest release](https://github.com/alanmarcero/openEDMDelay/releases/latest) · [OpenVST Manager](https://github.com/alanmarcero/alan-m-OpenVSTManager/releases/latest)
 
-![openEDMDelay editor](docs/screenshots/openEDMDelay.png)
+![openEDMDelay editor](docs/screenshots/preview.png)
 
 ## Choose an echo
 
