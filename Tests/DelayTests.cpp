@@ -262,9 +262,49 @@ void modulationEdges() {
     for(std::size_t i=1;i<x.l.size();++i) maxDelta=std::max(maxDelta,std::abs(x.l[i]-x.l[i-1]));
     check(maxDelta<.2f,"Square tape modulation clicks");
 }
+void sidechainDuck() {
+    auto s=clean();s.duck=1.f;s.duckSource=DuckSource::sidechain;s.inputDuck=false;
+    constexpr int n=8000;
+    std::vector<float> l(n),r(n),sc(n);
+    auto run=[&](DelayEngine& engine,int block,const float* side) {
+        for(int i=0;i<n;i+=block)
+            engine.process(l.data()+i,r.data()+i,std::min(block,n-i),s,{120,i/8000.0*2.0,true},side==nullptr?nullptr:side+i,side==nullptr?nullptr:side+i);
+    };
+    DelayEngine open;open.prepare(8000);l[0]=1;run(open,200,nullptr);
+    check(std::abs(l[4000]-1.f)<.05f,"Sidechain mode ducks when no sidechain is connected");
+    std::fill(l.begin(),l.end(),0.f);std::fill(r.begin(),r.end(),0.f);l[0]=1.f;
+    std::fill(sc.begin(),sc.end(),0.f);std::fill(sc.begin()+3000,sc.begin()+5200,.85f);
+    DelayEngine ducked;ducked.prepare(8000);run(ducked,200,sc.data());
+    check(std::abs(l[4000])<.2f,"A sidechain hit does not duck the echo");
+    std::fill(l.begin(),l.end(),0.f);l[0]=1.f;std::fill(sc.begin(),sc.end(),0.f);
+    DelayEngine silent;silent.prepare(8000);run(silent,128,sc.data());
+    check(std::abs(l[4000]-1.f)<.05f,"A silent sidechain still ducks");
+    std::fill(l.begin(),l.end(),0.f);std::fill(r.begin(),r.end(),0.f);std::fill(sc.begin(),sc.end(),.7f);
+    auto leak=s;leak.duck=0.f;DelayEngine dry;dry.prepare(8000);
+    dry.process(l.data(),r.data(),n,leak,{120,0,true},sc.data(),sc.data());
+    check(energy(l)<1.e-4&&energy(r)<1.e-4,"Sidechain audio is mixed into the output");
+    std::fill(l.begin(),l.end(),0.f);std::fill(r.begin(),r.end(),0.f);l[0]=1.f;
+    std::fill(sc.begin(),sc.end(),0.f);std::fill(sc.begin()+3000,sc.begin()+5200,.85f);
+    DelayEngine blocks;blocks.prepare(8000);auto other=l;std::vector<float> otherR(n),otherSc=sc;
+    run(blocks,1,sc.data());
+    DelayEngine wide;wide.prepare(8000);
+    wide.process(other.data(),otherR.data(),n,s,{120,0,true},otherSc.data(),otherSc.data());
+    for(int i=0;i<n;++i) check(std::abs(l[static_cast<std::size_t>(i)]-other[static_cast<std::size_t>(i)])<.0001f,"Sidechain ducking depends on block size");
+    DelayEngine fast;fast.prepare(8000);std::fill(l.begin(),l.end(),0.f);std::fill(sc.begin(),sc.end(),0.f);std::fill(sc.begin(),sc.begin()+80,1.f);
+    fast.process(l.data(),r.data(),80,s,{120,0,true},sc.data(),nullptr);
+    check(fast.duckGain()<.3f,"Sidechain detector attack is too slow for a kick");
+    std::fill(sc.begin(),sc.end(),0.f);fast.process(l.data(),r.data(),n,s,{120,0,true},sc.data(),nullptr);
+    check(fast.duckGain()>.5f,"Sidechain detector does not release");
+    auto ignored=clean();ignored.duck=1.f;ignored.inputDuck=true;ignored.duckSource=DuckSource::beat;
+    std::fill(l.begin(),l.end(),0.f);l[0]=1.f;std::fill(sc.begin(),sc.end(),.9f);
+    DelayEngine withSide;withSide.prepare(8000);withSide.process(l.data(),r.data(),n,ignored,{120,0,true},sc.data(),sc.data());
+    auto heard=l;std::fill(l.begin(),l.end(),0.f);l[0]=1.f;
+    DelayEngine without;without.prepare(8000);without.process(l.data(),r.data(),n,ignored,{120,0,true});
+    for(int i=0;i<n;++i) check(std::abs(heard[static_cast<std::size_t>(i)]-l[static_cast<std::size_t>(i)])<.0001f,"Input duck follows the sidechain");
+}
 int main() {
     int failed=0;
-    const std::pair<const char*,void(*)()> cases[]={{"reverse timing",reverseTiming},{"reverse clicks",reverseClicks},{"reverse feedback ping-pong",reverseFeedbackPingPong},{"reverse block size",reverseBlockSize},{"modulation edges",modulationEdges},{"shimmer, stereo Haas, and duck hold",shimmerHaasDuckHold},{"sustained settled hold",sustainedHold},{"settled hold input rejection",settledHoldInput},{"tap probability/ratchets",tapPerformance},{"tap tone",tapTone},{"groove/morph",grooveMorph},{"diffusion",diffusion},{"wobble rate",wobbleRate},{"wobble shape",wobbleShape},{"freeze",freezeLoop},{"fast timing automation",fastTimeAutomation},{"stutter seams",stutterEdges},{"filter automation",filterAutomation},{"extended host-synced grid",extendedGridTiming},{"beat timing",timing},{"routing",routing},{"taps",taps},{"dry/reset",dryAndReset},{"filters",filters},{"effects",effects},{"stability/block size",stable}};
+    const std::pair<const char*,void(*)()> cases[]={{"sidechain duck",sidechainDuck},{"reverse timing",reverseTiming},{"reverse clicks",reverseClicks},{"reverse feedback ping-pong",reverseFeedbackPingPong},{"reverse block size",reverseBlockSize},{"modulation edges",modulationEdges},{"shimmer, stereo Haas, and duck hold",shimmerHaasDuckHold},{"sustained settled hold",sustainedHold},{"settled hold input rejection",settledHoldInput},{"tap probability/ratchets",tapPerformance},{"tap tone",tapTone},{"groove/morph",grooveMorph},{"diffusion",diffusion},{"wobble rate",wobbleRate},{"wobble shape",wobbleShape},{"freeze",freezeLoop},{"fast timing automation",fastTimeAutomation},{"stutter seams",stutterEdges},{"filter automation",filterAutomation},{"extended host-synced grid",extendedGridTiming},{"beat timing",timing},{"routing",routing},{"taps",taps},{"dry/reset",dryAndReset},{"filters",filters},{"effects",effects},{"stability/block size",stable}};
     for(const auto& [name,test]:cases)try{test();std::cout<<"PASS "<<name<<'\n';}catch(const std::exception& e){++failed;std::cerr<<"FAIL "<<name<<": "<<e.what()<<'\n';}
     return failed?1:0;
 }

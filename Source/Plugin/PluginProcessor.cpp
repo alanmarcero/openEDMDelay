@@ -5,14 +5,46 @@
 #include <sstream>
 #include <locale>
 namespace oed {
-DelayProcessor::DelayProcessor():AudioProcessor(BusesProperties().withInput("Input",juce::AudioChannelSet::stereo(),true).withOutput("Output",juce::AudioChannelSet::stereo(),true)),parameters(*this,nullptr,"openEDMDelay",makeLayout()) {
+namespace {
+class ProgramEdit final:public juce::UndoableAction {
+public:
+    ProgramEdit(DelayProcessor& owner,int before,int after,bool beforeLegacy,bool afterLegacy) noexcept
+        :owner(owner),before(before),after(after),beforeLegacy(beforeLegacy),afterLegacy(afterLegacy) {}
+    bool perform() override {owner.recallProgram(after,afterLegacy);return true;}
+    bool undo() override {owner.recallProgram(before,beforeLegacy);return true;}
+    int getSizeInUnits() override {return 1;}
+private:
+    DelayProcessor& owner;int before,after;bool beforeLegacy,afterLegacy;
+};
+class PresetEdit final:public juce::UndoableAction {
+public:
+    PresetEdit(DelayProcessor& owner,juce::MemoryBlock before,juce::MemoryBlock after)
+        :owner(owner),before(std::move(before)),after(std::move(after)) {}
+    bool perform() override {return owner.restoreParameters(after.getData(),static_cast<int>(after.getSize()));}
+    bool undo() override {return owner.restoreParameters(before.getData(),static_cast<int>(before.getSize()));}
+    int getSizeInUnits() override {return 8;}
+private:
+    DelayProcessor& owner;juce::MemoryBlock before,after;
+};
+}
+DelayProcessor::DelayProcessor():AudioProcessor(BusesProperties().withInput("Input",juce::AudioChannelSet::stereo(),true).withInput("Sidechain",juce::AudioChannelSet::stereo(),false).withOutput("Output",juce::AudioChannelSet::stereo(),true)),parameters(*this,nullptr,"openEDMDelay",makeLayout()) {
     for(std::size_t i=0;i<values.size();++i)values[i]=parameters.getRawParameterValue(parameterSpecs()[i].id);
+    for(auto& bin:duckScope) bin.store(1.f,std::memory_order_relaxed);
     setCurrentProgram(0);
+    history.attach(*this);
+    ab.capture=[this]{return captureState();};
+    ab.restore=[this](const juce::MemoryBlock& block){restoreParameters(block.getData(),static_cast<int>(block.getSize()));history.clear();};
+    ab.seed();
 }
 void DelayProcessor::prepareToPlay(double sr,int){engine.prepare(sr);currentSampleRate=sr;internalPhase=0;wasBypassed=false;}
 void DelayProcessor::reset(){engine.reset();internalPhase=0;}
 bool DelayProcessor::isBusesLayoutSupported(const BusesLayout& l)const {
-    return l.getMainInputChannelSet()==l.getMainOutputChannelSet()&&(l.getMainOutputChannelSet()==juce::AudioChannelSet::mono()||l.getMainOutputChannelSet()==juce::AudioChannelSet::stereo());
+    if(l.inputBuses.size()!=2||l.outputBuses.size()!=1) return false;
+    const auto mainIn=l.getMainInputChannelSet(),mainOut=l.getMainOutputChannelSet();
+    if(mainIn!=mainOut) return false;
+    if(mainOut!=juce::AudioChannelSet::mono()&&mainOut!=juce::AudioChannelSet::stereo()) return false;
+    const auto side=l.getChannelSet(true,1);
+    return side.isDisabled()||side==juce::AudioChannelSet::mono()||side==juce::AudioChannelSet::stereo();
 }
 void DelayProcessor::processBlock(juce::AudioBuffer<float>& buffer,juce::MidiBuffer& midi) {
     juce::ScopedNoDenormals noDenormals;
@@ -22,8 +54,42 @@ void DelayProcessor::processBlock(juce::AudioBuffer<float>& buffer,juce::MidiBuf
     const bool requested=resetPending.exchange(false);
     if(wasBypassed||requested){engine.reset();wasBypassed=false;}
     const auto transport=updateClock(buffer.getNumSamples());
-    engine.process(buffer.getWritePointer(0),buffer.getNumChannels()>1?buffer.getWritePointer(1):nullptr,buffer.getNumSamples(),settings(),transport);
-    duckMeter.store(engine.duckGain());outputPeak.store(buffer.getMagnitude(0,buffer.getNumSamples()));
+    juce::AudioBuffer<float> side;
+    if(getBusCount(true)>1) if(auto* bus=getBus(true,1);bus!=nullptr&&bus->isEnabled()) side=getBusBuffer(buffer,true,1);
+    const float* sideL=side.getNumChannels()>0?side.getReadPointer(0):nullptr;
+    const float* sideR=side.getNumChannels()>1?side.getReadPointer(1):nullptr;
+    const int mainChannels=std::max(1,getMainBusNumInputChannels());
+    engine.process(buffer.getWritePointer(0),mainChannels>1?buffer.getWritePointer(1):nullptr,buffer.getNumSamples(),settings(),transport,sideL,sideR);
+    duckMeter.store(engine.duckGain());
+    captureScope(sideL,sideR,buffer.getNumSamples(),transport.ppq,transport.bpm,duckMeter.load());
+    float peak=0.f;const int measured=std::min(buffer.getNumChannels(),mainChannels);
+    for(int c=0;c<measured;++c) peak=std::max(peak,buffer.getMagnitude(c,0,buffer.getNumSamples()));
+    outputPeak.store(peak);
+}
+void DelayProcessor::captureScope(const float* left,const float* right,int frames,double ppq,double bpm,float duck) {
+    if(frames<=0||currentSampleRate<=0) return;
+    const float keep=static_cast<float>(std::exp(-(frames/currentSampleRate)/0.7));
+    for(auto& bin:sideScope) bin.store(bin.load(std::memory_order_relaxed)*keep,std::memory_order_relaxed);
+    const double per=bpm/60.0/currentSampleRate;
+    const int stride=std::max(1,static_cast<int>(currentSampleRate*0.002));
+    for(int i=0;i<frames;i+=stride) {
+        float peak=0.f;
+        const int end=std::min(frames,i+stride);
+        for(int s=i;s<end;++s) {
+            const float a=left!=nullptr?std::abs(left[s]):0.f;
+            const float b=right!=nullptr?std::abs(right[s]):0.f;
+            peak=std::max(peak,std::max(a,b));
+        }
+        double pos=std::fmod(ppq+per*i,2.0);
+        if(pos<0) pos+=2.0;
+        const int bin=juce::jlimit(0,scopeBinCount-1,static_cast<int>(pos/2.0*scopeBinCount));
+        auto& slot=sideScope[static_cast<std::size_t>(bin)];
+        slot.store(std::max(peak,slot.load(std::memory_order_relaxed)),std::memory_order_relaxed);
+        auto& duckSlot=duckScope[static_cast<std::size_t>(bin)];
+        const float previous=duckSlot.load(std::memory_order_relaxed);
+        duckSlot.store(duck*0.35f+previous*0.65f,std::memory_order_relaxed);
+        scopeHead.store(bin,std::memory_order_relaxed);
+    }
 }
 Transport DelayProcessor::updateClock(int frames) {
     Transport clock{values[tempo]->load(),internalPhase,true};
@@ -208,6 +274,7 @@ const juce::StringArray& patternNames() {
 }
 void DelayProcessor::applyPattern(int index) {
     if(!juce::isPositiveAndBelow(index,static_cast<int>(std::size(rhythms))))return;
+    history.beginGesture();
     const auto& pattern=rhythms[index];
     for(int i=0;i<tapCount;++i) {
         const auto hit=pattern.taps[static_cast<std::size_t>(i)];
@@ -217,6 +284,7 @@ void DelayProcessor::applyPattern(int index) {
         setPlainValue(id+2,static_cast<float>(hit.step?hit.level:70));
         setPlainValue(id+3,static_cast<float>(hit.pan));
     }
+    history.endGesture();
 }
 int DelayProcessor::getNumPrograms(){return static_cast<int>(std::size(bank));}
 const juce::String DelayProcessor::getProgramName(int index) {
@@ -224,6 +292,9 @@ const juce::String DelayProcessor::getProgramName(int index) {
 }
 void DelayProcessor::setCurrentProgram(int index) {
     index=juce::jlimit(0,getNumPrograms()-1,index);
+    const int previous=program.load();const bool previousLegacy=oldBank.load();
+    history.beginGesture();
+    history.addAction(new ProgramEdit(*this,previous,index,previousLegacy,false));
     const auto& sound=bank[index];
     for(int i=0;i<parameterCount;++i) setPlainValue(i,parameterSpecs()[static_cast<std::size_t>(i)].initial);
     applyPattern(sound.rhythm);
@@ -235,34 +306,72 @@ void DelayProcessor::setCurrentProgram(int index) {
     setPlainValue(highPass,static_cast<float>(sound.hp));
     setPlainValue(lowPass,static_cast<float>(sound.lp));
     for(auto [id,value]:sound.controls) setPlainValue(id,value);
-    program.store(index);
-    oldBank.store(false);
+    recallProgram(index,false);
     resetPending.store(true);
+    history.endGesture();
+}
+void DelayProcessor::recallProgram(int index,bool legacyBank) {
+    program.store(juce::jlimit(0,std::max(0,getNumPrograms()-1),index));
+    oldBank.store(legacyBank);
+}
+juce::MemoryBlock DelayProcessor::captureState() {
+    auto state=parameters.copyState();state.setProperty("program",program.load(),nullptr);state.setProperty("programBank",oldBank.load()?0:3,nullptr);
+    juce::MemoryBlock block;if(auto xml=state.createXml()) copyXmlToBinary(*xml,block);return block;
+}
+bool DelayProcessor::restoreParameters(const void* data,int size) {
+    auto xml=getXmlFromBinary(data,size);
+    if(xml==nullptr||!xml->hasTagName(parameters.state.getType())) return false;
+    xml->removeAttribute("abA");xml->removeAttribute("abB");xml->removeAttribute("abActive");
+    auto state=juce::ValueTree::fromXml(*xml);if(!state.isValid()) return false;
+    for(const auto& spec:parameterSpecs()) {
+        int matches=0;
+        for(const auto& child:state)if(child.getProperty("id").toString()==spec.id) {
+            ++matches;
+            const auto value=child.getProperty("value").toString().trim().toStdString();double number=0;
+            std::istringstream parser(value);parser.imbue(std::locale::classic());parser>>std::noskipws>>number;
+            if(!parser||!parser.eof()||!std::isfinite(number)||number<spec.min||number>spec.max) return false;
+            if((spec.choices.isNotEmpty()||spec.id.endsWith("Step"))&&std::abs(number-std::round(number))>1.e-6) return false;
+        }
+        if(matches==0) {
+            const auto index=static_cast<int>(&spec-parameterSpecs().data());
+            if(index<swing) return false;
+            juce::ValueTree child("PARAM");child.setProperty("id",spec.id,nullptr);child.setProperty("value",spec.initial,nullptr);state.appendChild(child,nullptr);
+        } else if(matches!=1) return false;
+    }
+    {
+        suite::SuspendUndo pause(history);
+        parameters.replaceState(state);
+        oldBank.store(static_cast<int>(state.getProperty("programBank",0))!=3);
+        program.store(juce::jlimit(0,getNumPrograms()-1,static_cast<int>(state.getProperty("program",0))));
+        resetPending.store(true);
+    }
+    return true;
+}
+void DelayProcessor::applyUserPreset(const juce::MemoryBlock& block) {
+    history.perform(new PresetEdit(*this,captureState(),block));
 }
 void DelayProcessor::getStateInformation(juce::MemoryBlock& block) {
+    ab.captureActive();
     auto state=parameters.copyState();state.setProperty("program",program.load(),nullptr);state.setProperty("programBank",oldBank.load()?0:3,nullptr);
-    if(auto xml=state.createXml())copyXmlToBinary(*xml,block);
+    if(auto xml=state.createXml()) {
+        xml->setAttribute("abActive",ab.active());
+        xml->setAttribute("abA",ab.slot(0).toBase64Encoding());
+        xml->setAttribute("abB",ab.slot(1).toBase64Encoding());
+        copyXmlToBinary(*xml,block);
+    }
 }
 void DelayProcessor::setStateInformation(const void* data,int size) {
-    if(auto xml=getXmlFromBinary(data,size);xml&&xml->hasTagName(parameters.state.getType())) {
-        auto state=juce::ValueTree::fromXml(*xml);if(!state.isValid())return;
-        for(const auto& spec:parameterSpecs()) {
-            int matches=0;
-            for(const auto& child:state)if(child.getProperty("id").toString()==spec.id) {
-                ++matches;
-                const auto value=child.getProperty("value").toString().trim().toStdString();double number=0;
-                std::istringstream parser(value);parser.imbue(std::locale::classic());parser>>std::noskipws>>number;
-                if(!parser||!parser.eof()||!std::isfinite(number)||number<spec.min||number>spec.max)return;
-                if((spec.choices.isNotEmpty()||spec.id.endsWith("Step"))&&std::abs(number-std::round(number))>1.e-6)return;
-            }
-            if(matches==0) {
-                const auto index=static_cast<int>(&spec-parameterSpecs().data());
-                if(index<swing)return;
-                juce::ValueTree child("PARAM");child.setProperty("id",spec.id,nullptr);child.setProperty("value",spec.initial,nullptr);state.appendChild(child,nullptr);
-            } else if(matches!=1)return;
-        }
-        parameters.replaceState(state);oldBank.store(static_cast<int>(state.getProperty("programBank",0))!=3);program.store(juce::jlimit(0,getNumPrograms()-1,static_cast<int>(state.getProperty("program",0))));resetPending.store(true);
+    auto xml=getXmlFromBinary(data,size);
+    if(xml==nullptr||!xml->hasTagName(parameters.state.getType())) return;
+    juce::MemoryBlock slotA,slotB;bool slotsOk=false;int slotIndex=0;
+    if(xml->hasAttribute("abA")&&xml->hasAttribute("abB")) {
+        slotsOk=slotA.fromBase64Encoding(xml->getStringAttribute("abA"))&&slotB.fromBase64Encoding(xml->getStringAttribute("abB"));
+        slotIndex=xml->getIntAttribute("abActive",0)==1?1:0;
     }
+    if(!restoreParameters(data,size)) return;
+    if(slotsOk) ab.setSlots(std::move(slotA),std::move(slotB),slotIndex);
+    else ab.seed();
+    history.clear();
 }
 }
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter(){return new oed::DelayProcessor;}

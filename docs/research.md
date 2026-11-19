@@ -11,7 +11,7 @@ Research date: 2026-11-16. These products informed the feature selection; openED
 | [Access Virus reference manual](https://www.virus.info/download/200), available through [Access manuals](https://www.virus.info/support/manuals) | Delay section (PDF page 35) documents Simple, Ping Pong 2:1 through 8:7, and clock-synchronized Pattern 1+1 through 5+5. | Original rhythm templates include 1+1, 2+1, 3+2, 3+4, 3+5, 4+3, 5+3, plus eight-tap sequences. The shared-ring topology is not the Virus topology. |
 | [Access OS3 tape echo description](https://www.virus.info/virusti/upgrades) | Tape delay follows tempo; Doppler behavior during tempo changes is a deliberate sound choice. | Tape character glides; other characters crossfade read heads over 25 ms. |
 
-Additional design decisions: beat-only controls throughout; visible internal BPM fallback; ducking and glitch on the wet branch; filters inside the feedback loop; no external sidechain bus in this version. Patterns describe useful rhythmic relationships rather than proprietary presets. Tape, BBD and lo-fi are creative approximations, not hardware circuit models.
+Additional design decisions: beat-only controls throughout; visible internal BPM fallback; ducking and glitch on the wet branch; filters inside the feedback loop. A later version adds an optional sidechain input as a third duck source. Patterns describe useful rhythmic relationships rather than proprietary presets. Tape, BBD and lo-fi are creative approximations, not hardware circuit models.
 
 ## Visual source
 
