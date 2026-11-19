@@ -128,7 +128,25 @@ jobs:
           path: preview
       - name: Commit refreshed preview if changed
         run: |
-          git diff --name-only "${{ github.event.before }}" "${{ github.sha }}" | grep -qE '^(Source|assets|Tools|tools|Tests)/' || { echo "No UI changes; keeping preview."; exit 0; }
+          # Capture names before searching. `grep -q` in a pipefail pipeline
+          # SIGPIPEs `git diff` on the first match, the pipeline fails, and the
+          # `||` branch then skips a real UI change.
+          before="${{ github.event.before }}"
+          sha="${{ github.sha }}"
+          names=""
+          if [ "$before" = "0000000000000000000000000000000000000000" ] || ! names="$(git diff --name-only "$before" "$sha")"; then
+            echo "Could not diff this push; refreshing preview."
+            names="Source/"
+          fi
+          ui=0
+          while IFS= read -r path; do
+            case "$path" in
+              Source/*|assets/*|Tools/*|tools/*|Tests/*) ui=1 ;;
+            esac
+          done <<EOF
+          $names
+          EOF
+          if [ "$ui" -ne 1 ]; then echo "No UI changes; keeping preview."; exit 0; fi
           mkdir -p docs/screenshots
           cp "preview/openEDMDelay.png" docs/screenshots/preview.png
           if git diff --quiet -- docs/screenshots/preview.png; then echo "Preview unchanged."; exit 0; fi
@@ -136,4 +154,6 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add docs/screenshots/preview.png
           git commit -m "docs: refresh preview screenshot [skip ci]"
-          git push
+          git fetch origin main
+          git rebase origin/main
+          git push origin HEAD:main
