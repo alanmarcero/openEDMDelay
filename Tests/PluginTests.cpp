@@ -2,9 +2,11 @@
 #include <juce_audio_formats/juce_audio_formats.h>
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <iostream>
 #include <set>
 #include <stdexcept>
+#include <string>
 using namespace oed;
 void require(bool x,const char* why){if(!x)throw std::runtime_error(why);}
 struct Host:juce::AudioPlayHead{PositionInfo info;juce::Optional<PositionInfo> getPosition()const override{return info;}};
@@ -134,7 +136,7 @@ static void bankAudio() {
         if(writer) require(writer->writeFromAudioSampleBuffer(wave,0,frames),"Impulse export failed");
         require(signatures.insert(signature).second,"Two factory programs produced identical wet echoes");
     }
-    std::cout<<"64 distinct impulse responses at 160 BPM, first echoes "<<minimum<<" to "<<maximum<<" s\n";
+    std::cout<<p.getNumPrograms()<<" distinct impulse responses at 160 BPM, first echoes "<<minimum<<" to "<<maximum<<" s\n";
     require(patternNames().size()==12,"Rhythm template count changed");
     std::set<std::array<int,tapCount>> shapes;
     p.setPlainValue(feedback,64);
@@ -171,18 +173,18 @@ void ui(const juce::File& destination){
     auto* previous=dynamic_cast<juce::TextButton*>(find(*e,"prevPreset"));
     auto* next=dynamic_cast<juce::TextButton*>(find(*e,"nextPreset"));
     require(browser&&previous&&next,"Missing preset browser controls");
-    require(browser->getRootMenu()->getNumItems()==7,"Preset menu should group presets into 7 dance styles");
-    previous->onClick();require(p.getCurrentProgram()==63,"Previous failed to wrap");
+    require(browser->getRootMenu()->getNumItems()==12,"Preset menu should group programs by delay type");
+    previous->onClick();require(p.getCurrentProgram()==p.getNumPrograms()-1,"Previous failed to wrap");
     next->onClick();require(p.getCurrentProgram()==0,"Next failed to wrap");
     browser->setSelectedId(13,juce::sendNotificationSync);
     require(p.getCurrentProgram()==12,"Preset menu did not update the processor");
     browser->setSelectedId(1,juce::sendNotificationSync);
     auto* initialMix=find(*e,"mix");require(initialMix!=nullptr,"Initial mix control missing");bool initialUnit=false;
-    for(auto* child:initialMix->getChildren())if(auto* label=dynamic_cast<juce::Label*>(child))initialUnit=label->getText()=="32%";
+    for(auto* child:initialMix->getChildren())if(auto* label=dynamic_cast<juce::Label*>(child))initialUnit=label->getText()=="28%";
     require(initialUnit,"Initial knob value is missing its unit");
     for(int i=0;i<parameterCount;++i){const auto& spec=parameterSpecs()[static_cast<std::size_t>(i)];auto* c=find(*e,spec.id);require(c!=nullptr,("Missing control: "+spec.id).toRawUTF8());if(auto* s=dynamic_cast<juce::Slider*>(c))s->setValue(spec.min+(spec.max-spec.min)*.6,juce::sendNotificationSync);else if(auto* box=dynamic_cast<juce::ComboBox*>(c))box->setSelectedId(box->getNumItems(),juce::sendNotificationSync);else if(auto* button=dynamic_cast<juce::Button*>(c))button->setToggleState(true,juce::sendNotificationSync);else require(false,"Unknown control");}
     require(p.values[mix]->load()==60,"Mix knob disconnected");require(p.values[baseCount+1]->load()==10,"Tap step disconnected");require(p.values[hpSlope]->load()==4,"Slope selector disconnected");
-    require(p.getNumPrograms()==64,"EDM factory bank must contain 64 programs");
+    require(p.getNumPrograms()==72,"Factory bank must contain 72 programs");
     require(rateNames().size()==16,"EDM grid must expose 16 host-synced divisions");
     juce::AudioBuffer<float> b(2,256);b.clear();juce::MidiBuffer midi;
     Host host;host.info.setBpm(128);host.info.setPpqPosition(1.35);host.info.setIsPlaying(true);p.setPlayHead(&host);
@@ -213,4 +215,86 @@ void ui(const juce::File& destination){
     juce::MessageManager::getInstance()->runDispatchLoopUntil(60);viewport->setViewPosition(0,1100);save("openEDMDelay-performance.png");viewport->setViewPosition(0,0);
     p.setCurrentProgram(43);p.processBlock(b,midi);juce::MessageManager::getInstance()->runDispatchLoopUntil(60);save("openEDMDelay-glitch.png");p.setPlayHead(nullptr);
 }
-int main(int argc,char** argv){juce::ScopedJuceInitialiser_GUI gui;int errors=0;for(const auto& [name,test]:std::initializer_list<std::pair<const char*,void(*)()>>{{"factory impulse responses and rhythms",bankAudio},{"filtered tap host tail",filteredTapTail},{"diffusion host tail",diffusionHostTail},{"scrollable control access",scrollableControls},{"host audio/bypass",audio},{"session recall",recall},{"malformed parameter state",malformedState},{"preset while bypassed",presetWhileBypassed}})try{test();std::cout<<"PASS "<<name<<'\n';}catch(const std::exception& e){std::cerr<<"FAIL "<<name<<": "<<e.what()<<'\n';++errors;}try{ui(juce::File::getCurrentWorkingDirectory().getChildFile(argc>1?argv[1]:"docs/screenshots"));std::cout<<"PASS native controls and actual editor screenshots\n";}catch(const std::exception& e){std::cerr<<"FAIL UI: "<<e.what()<<'\n';++errors;}return errors?1:0;}
+static void previousFactoryBank() {
+    DelayProcessor saved; saved.setCurrentProgram(4);
+    juce::MemoryBlock block; saved.getStateInformation(block);
+    auto xml=juce::AudioProcessor::getXmlFromBinary(block.getData(),static_cast<int>(block.getSize()));
+    require(xml!=nullptr,"Factory state did not serialize");
+    xml->setAttribute("programBank",2);
+    juce::MemoryBlock legacy; juce::AudioProcessor::copyXmlToBinary(*xml,legacy);
+    DelayProcessor loaded; loaded.setStateInformation(legacy.getData(),static_cast<int>(legacy.getSize()));
+    require(loaded.displayedProgram()==-1,"A v1.5 factory session is labeled with a replacement preset name");
+    require(std::abs(loaded.values[mix]->load()-saved.values[mix]->load())<.001f,"A v1.5 factory session lost its saved mix");
+}
+static void factoryVoices() {
+    DelayProcessor p; Host host; host.info.setIsPlaying(true); host.info.setBpm(120); host.info.setPpqPosition(0);
+    p.setPlayHead(&host);
+    constexpr int sr=16000;
+    p.prepareToPlay(sr,256);
+    const juce::StringArray banned{"Uplifting","Psy","Rolling","Progressive","Tech","Bass","Classic","Trance","House","Garage","Dubstep"};
+    int piano=0, pianoSlap=0, pianoQuarter=0, pianoDotted=0, pianoReverse=0, reversePrograms=0;
+    std::set<juce::String> families;
+    juce::String previousFamily;
+    for(int i=0;i<p.getNumPrograms();++i) {
+        const auto name=p.getProgramName(i);
+        const auto family=name.upToFirstOccurrenceOf(" / ",false,false);
+        require(family.isNotEmpty()&&name.contains(" / "),"Preset name is not Category / Sound");
+        if(family!=previousFamily){require(!families.contains(family),"Delay categories are interleaved"); families.insert(family); previousFamily=family;}
+        for(const auto& word:banned) require(!name.contains(word),"Preset name still uses a genre label");
+        p.setCurrentProgram(i);
+        const auto s=p.settings();
+        require(s.rate>=0&&s.rate<static_cast<int>(beatRates.size()),"Preset grid is not a tempo division");
+        if(family=="Piano") {
+            ++piano;
+            if(name.contains("Slap")&&(s.rate==0||s.rate==2)) ++pianoSlap;
+            if(name.contains("Quarter")&&s.rate==7) ++pianoQuarter;
+            if(s.rate==5) ++pianoDotted;
+            if(s.reverse>.9f) ++pianoReverse;
+        }
+        if(s.reverse>.9f) ++reversePrograms;
+        const bool ping=s.routing==Routing::pingPong;
+        if(ping) {
+            require(s.diffusion<.05f&&s.shimmer<.05f,"Ping-pong preset is diffused into a wash");
+            int taps=0; for(const auto& tap:s.taps) taps+=tap.enabled&&tap.level>0?1:0;
+            require(taps==1,"Ping-pong preset uses more than one tap");
+            p.setPlainValue(mix,100);
+            constexpr int frames=sr*4;
+            juce::AudioBuffer<float> audio(2,frames); audio.clear(); audio.setSample(0,0,1.f); audio.setSample(1,0,1.f);
+            juce::MidiBuffer midi; p.processBlock(audio,midi);
+            std::string sequence; char last=' ';
+            const int hop=sr/100;
+            for(int pos=hop; pos+hop<frames; pos+=hop) {
+                float ml=0, mr=0;
+                for(int k=0;k<hop;++k){ml=std::max(ml,std::abs(audio.getSample(0,pos+k))); mr=std::max(mr,std::abs(audio.getSample(1,pos+k)));}
+                if(std::max(ml,mr)<.04f) continue;
+                const char ch=ml>mr*1.8f?'L':mr>ml*1.8f?'R':'B';
+                if(ch!=last){sequence.push_back(ch); last=ch;}
+            }
+            require(sequence.find('B')==std::string::npos, (name+" ping-pong smears both channels: "+sequence).toRawUTF8());
+            require(sequence.find('L')!=std::string::npos && sequence.find('R')!=std::string::npos, (name+" does not alternate left and right: "+sequence).toRawUTF8());
+        }
+        if(family=="Reverse"||name.startsWith("Piano / Reverse")) require(s.reverse>.9f,"Reverse preset is not actually reversing");
+    }
+    require(families.size()==12,"Expected 12 delay-type categories");
+    require(piano>=6&&pianoSlap>=2&&pianoQuarter>=2&&pianoDotted>=1&&pianoReverse>=1,"Piano set is missing slap, quarter, dotted, or reverse");
+    require(reversePrograms>=6,"Reverse delay needs a set of tempo-synced presets");
+    // Levels, clipping, and DC on a chord-like burst through every factory preset.
+    p.prepareToPlay(sr,256);
+    for(int i=0;i<p.getNumPrograms();++i) {
+        p.setCurrentProgram(i);
+        constexpr int frames=sr*2;
+        juce::AudioBuffer<float> audio(2,frames); audio.clear();
+        for(int n=0;n<frames;++n) {
+            const float t=n/static_cast<float>(sr);
+            const float env=n<static_cast<int>(.4f*sr)?std::exp(-t*3.f):0.f;
+            float s=0; for(float f:{220.f,277.f,330.f,440.f}) s+=std::sin(2.f*3.14159265f*f*t);
+            audio.setSample(0,n,s*env*.2f); audio.setSample(1,n,s*env*.18f);
+        }
+        juce::MidiBuffer midi; p.processBlock(audio,midi);
+        float peak=0, dc=0;
+        for(int n=0;n<frames;++n){peak=std::max(peak,std::abs(audio.getSample(0,n))); peak=std::max(peak,std::abs(audio.getSample(1,n))); dc+=audio.getSample(0,n)+audio.getSample(1,n);}
+        require(std::isfinite(peak)&&peak<=1.f,(p.getProgramName(i)+" clips").toRawUTF8());
+        require(std::abs(dc/(2.f*frames))<.01f,(p.getProgramName(i)+" has DC").toRawUTF8());
+    }
+}
+int main(int argc,char** argv){juce::ScopedJuceInitialiser_GUI gui;int errors=0;for(const auto& [name,test]:std::initializer_list<std::pair<const char*,void(*)()>>{{"factory voices",factoryVoices},{"previous factory bank",previousFactoryBank},{"factory impulse responses and rhythms",bankAudio},{"filtered tap host tail",filteredTapTail},{"diffusion host tail",diffusionHostTail},{"scrollable control access",scrollableControls},{"host audio/bypass",audio},{"session recall",recall},{"malformed parameter state",malformedState},{"preset while bypassed",presetWhileBypassed}})try{test();std::cout<<"PASS "<<name<<'\n';}catch(const std::exception& e){std::cerr<<"FAIL "<<name<<": "<<e.what()<<'\n';++errors;}try{ui(juce::File::getCurrentWorkingDirectory().getChildFile(argc>1?argv[1]:"docs/screenshots"));std::cout<<"PASS native controls and actual editor screenshots\n";}catch(const std::exception& e){std::cerr<<"FAIL UI: "<<e.what()<<'\n';++errors;}return errors?1:0;}

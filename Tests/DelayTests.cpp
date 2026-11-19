@@ -209,9 +209,62 @@ void shimmerHaasDuckHold() {
     s.duckHold=.8f;withHold.run(s);
     check(energy(withHold.l,4000)<energy(noHold.l,4000),"Duck hold does not extend ducking attenuation");
 }
+void reverseTiming() {
+    for(double sr:{8000.,44100.}) for(double bpm:{100.,120.,126.,137.,174.}) {
+        const double beat=sr*60.0/bpm, chunk=beat*beatRates[7], delay=chunk;
+        const int frames=static_cast<int>(std::ceil(delay+chunk))+64;
+        Render x(sr,frames); auto s=clean(); s.reverse=1.f; s.reverseRate=7; s.rate=7; s.feedback=0.f;
+        x.l[0]=1.f; x.r[0]=1.f; x.run(s,bpm,128);
+        int peak=1;
+        for(int i=1;i<frames;++i) if(std::abs(x.l[static_cast<std::size_t>(i)])>std::abs(x.l[static_cast<std::size_t>(peak)])) peak=i;
+        check(std::abs(peak-(delay+chunk*.5))<=1.0 && std::abs(x.l[static_cast<std::size_t>(peak)])>.45f,"Reverse echo misses delay + chunk/2");
+        const int forward=std::clamp(static_cast<int>(std::lround(delay)),1,frames-1);
+        check(std::abs(x.l[static_cast<std::size_t>(forward)])<.25f,"Reverse still plays a forward echo at the tap time");
+    }
+    constexpr int T=6000;
+    Render ramp(8000,12000); auto s=clean(); s.reverse=1.f; s.reverseRate=7; s.rate=7;
+    for(int i=0;i<4000;++i) ramp.l[static_cast<std::size_t>(i)]=ramp.r[static_cast<std::size_t>(i)]=i/4000.f;
+    ramp.run(s,120,64);
+    check(ramp.l[T-400]>ramp.l[T-100] && ramp.l[T-100]>ramp.l[T]+.01f,"Reverse chunk is not time-reversed");
+}
+void reverseClicks() {
+    constexpr int sr=8000;
+    Render x(sr,sr*2); auto s=clean(); s.reverse=1; s.reverseRate=7; s.rate=7; s.feedback=0;
+    for(std::size_t i=0;i<x.l.size();++i){const float v=std::sin(static_cast<float>(i)*(2*3.14159265f*440.f/sr))*.25f; x.l[i]=x.r[i]=v;}
+    x.run(s,120,128);
+    float maxDelta=0;
+    for(std::size_t i=sr/10;i<x.l.size();++i) maxDelta=std::max(maxDelta,std::abs(x.l[i]-x.l[i-1]));
+    check(maxDelta<.2f,"Reverse chunk boundary clicks");
+}
+void reverseFeedbackPingPong() {
+    auto s=clean(); s.reverse=1; s.reverseRate=7; s.rate=7; s.feedback=.5f; s.routing=Routing::pingPong;
+    Render x(8000,32000); x.l[0]=1; x.r[0]=1; x.run(s,120,96);
+    for(float v:x.l) check(std::isfinite(v)&&std::abs(v)<4.f,"Reverse feedback is unstable");
+    for(float v:x.r) check(std::isfinite(v)&&std::abs(v)<4.f,"Reverse feedback is unstable");
+    double left=0,right=0,laterL=0,laterR=0;
+    for(int i=5000;i<7000;++i){left+=std::abs(x.l[static_cast<std::size_t>(i)]); right+=std::abs(x.r[static_cast<std::size_t>(i)]);}
+    for(int i=11000;i<14000;++i){laterL+=std::abs(x.l[static_cast<std::size_t>(i)]); laterR+=std::abs(x.r[static_cast<std::size_t>(i)]);}
+    check(left>right*4,"First reversed ping-pong image is not on the left");
+    check(laterR>laterL,"Reversed ping-pong feedback does not reach the right");
+}
+void reverseBlockSize() {
+    auto s=clean(); s.reverse=1; s.reverseRate=7; s.rate=7; s.feedback=.3f;
+    Render a(8000,12000),b(8000,12000);
+    for(std::size_t i=0;i<a.l.size();++i) a.l[i]=b.l[i]=std::sin(static_cast<float>(i)*.03f)*.2f;
+    a.run(s,120,1); b.run(s,120,300);
+    for(std::size_t i=0;i<a.l.size();++i) check(std::abs(a.l[i]-b.l[i])<.0001f,"Reverse delay depends on block size");
+}
+void modulationEdges() {
+    Render x(8000,16000); auto s=clean(); s.character=Character::tape; s.motion=1; s.drive=0; s.wobbleShape=WobbleShape::square; s.wobbleRate=4;
+    for(std::size_t i=0;i<x.l.size();++i) x.l[i]=x.r[i]=std::sin(static_cast<float>(i)*.05f)*.3f;
+    x.run(s);
+    float maxDelta=0;
+    for(std::size_t i=1;i<x.l.size();++i) maxDelta=std::max(maxDelta,std::abs(x.l[i]-x.l[i-1]));
+    check(maxDelta<.2f,"Square tape modulation clicks");
+}
 int main() {
     int failed=0;
-    const std::pair<const char*,void(*)()> cases[]={{"shimmer, stereo Haas, and duck hold",shimmerHaasDuckHold},{"sustained settled hold",sustainedHold},{"settled hold input rejection",settledHoldInput},{"tap probability/ratchets",tapPerformance},{"tap tone",tapTone},{"groove/morph",grooveMorph},{"diffusion",diffusion},{"wobble rate",wobbleRate},{"wobble shape",wobbleShape},{"freeze",freezeLoop},{"fast timing automation",fastTimeAutomation},{"stutter seams",stutterEdges},{"filter automation",filterAutomation},{"extended host-synced grid",extendedGridTiming},{"beat timing",timing},{"routing",routing},{"taps",taps},{"dry/reset",dryAndReset},{"filters",filters},{"effects",effects},{"stability/block size",stable}};
+    const std::pair<const char*,void(*)()> cases[]={{"reverse timing",reverseTiming},{"reverse clicks",reverseClicks},{"reverse feedback ping-pong",reverseFeedbackPingPong},{"reverse block size",reverseBlockSize},{"modulation edges",modulationEdges},{"shimmer, stereo Haas, and duck hold",shimmerHaasDuckHold},{"sustained settled hold",sustainedHold},{"settled hold input rejection",settledHoldInput},{"tap probability/ratchets",tapPerformance},{"tap tone",tapTone},{"groove/morph",grooveMorph},{"diffusion",diffusion},{"wobble rate",wobbleRate},{"wobble shape",wobbleShape},{"freeze",freezeLoop},{"fast timing automation",fastTimeAutomation},{"stutter seams",stutterEdges},{"filter automation",filterAutomation},{"extended host-synced grid",extendedGridTiming},{"beat timing",timing},{"routing",routing},{"taps",taps},{"dry/reset",dryAndReset},{"filters",filters},{"effects",effects},{"stability/block size",stable}};
     for(const auto& [name,test]:cases)try{test();std::cout<<"PASS "<<name<<'\n';}catch(const std::exception& e){++failed;std::cerr<<"FAIL "<<name<<": "<<e.what()<<'\n';}
     return failed?1:0;
 }
