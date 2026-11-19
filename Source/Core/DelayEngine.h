@@ -12,6 +12,7 @@ constexpr std::array<double,4> diffusionStageLengths{.61,.89,1.17,1.53};
 enum class Routing { stereo, pingPong, mono };
 enum class Character { digital, tape, bbd, loFi };
 enum class Glitch { off, gate, stutter, reverse };
+enum class DuckSource { beat, input, sidechain };
 enum class WobbleShape { sine, triangle, square, randomWalk, sampleHold };
 struct Tap { bool enabled = false; int step = 1; float level = 1; float pan = 0; float probability = 1; int ratchets = 1; bool filter = false;
     float highPass = 20, lowPass = 20000; int character = 0; float drive = .25f; int morphStep = 1; };
@@ -27,6 +28,7 @@ struct Settings {
     float shimmer = 0, stereoOffset = 0, duckHold = 0, reverse = 0;
     int reverseRate = 7;
     WobbleShape wobbleShape = WobbleShape::sine;
+    DuckSource duckSource = DuckSource::beat;
     bool inputDuck = false;
     int duckRate = 7, glitchRate = 2;
     Glitch glitch = Glitch::off;
@@ -37,7 +39,7 @@ class DelayEngine {
 public:
     void prepare(double sampleRate);
     void reset();
-    void process(float* left, float* right, int frames, const Settings&, const Transport&);
+    void process(float* left, float* right, int frames, const Settings&, const Transport&, const float* sideLeft = nullptr, const float* sideRight = nullptr);
     float duckGain() const { return lastDuck; }
 private:
     struct Filter {

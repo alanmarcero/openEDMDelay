@@ -115,6 +115,33 @@ DelayEditor::DelayEditor(DelayProcessor& p):AudioProcessorEditor(p),owner(p),gri
     for(int i=0;i<tapCount;++i)selectedTap.addItem("Edit tap "+juce::String(i+1),i+1);
     selectedTap.setTooltip("Choose which tap to edit below.");
     selectedTap.setSelectedId(1,juce::dontSendNotification);selectedTap.onChange=[this]{resized();};
+    addSuiteButton(undoButton,"undo","Undo the last edit. Ctrl+Z or Cmd+Z.");
+    addSuiteButton(redoButton,"redo","Redo. Shift+Ctrl+Z or Shift+Cmd+Z.");
+    addSuiteButton(slotA,"slotA","Hear setup A.");
+    addSuiteButton(slotB,"slotB","Hear setup B.");
+    addSuiteButton(copyAB,"copyAtoB","Copy A into B.");
+    addSuiteButton(copyBA,"copyBtoA","Copy B into A.");
+    slotA.setClickingTogglesState(false);slotB.setClickingTogglesState(false);
+    slotA.setColour(juce::TextButton::buttonOnColourId,theme::kAccentA);
+    slotB.setColour(juce::TextButton::buttonOnColourId,theme::kAccentB);
+    undoButton.onClick=[this]{owner.history.undo();};
+    redoButton.onClick=[this]{owner.history.redo();};
+    slotA.onClick=[this]{owner.ab.select(0);};
+    slotB.onClick=[this]{owner.ab.select(1);};
+    copyAB.onClick=[this]{owner.ab.copyAtoB();};
+    copyBA.onClick=[this]{owner.ab.copyBtoA();};
+    browser=std::make_unique<suite::PresetBrowser>(suite::PresetStore::defaultRoot("openEDMDelay"),suite::PresetHandlers{
+        .count=[this]{return owner.getNumPrograms();},
+        .name=[this](int index){return owner.getProgramName(index);},
+        .loadFactory=[this](int index){owner.setCurrentProgram(index);pattern.setSelectedId(0,juce::dontSendNotification);},
+        .capture=[this]{return owner.captureState();},
+        .loadUser=[this](const juce::MemoryBlock& block){owner.applyUserPreset(block);pattern.setSelectedId(0,juce::dontSendNotification);}
+    });
+    content.addAndMakeVisible(*browser);
+    scopeFrame.setComponentID("sidechainScope");
+    scopeFrame.setInterceptsMouseClicks(false,false);
+    content.addAndMakeVisible(scopeFrame);
+    setWantsKeyboardFocus(true);
     setResizable(true,false);setResizeLimits(900,600,1216,850);setSize(1216,850);startTimerHz(24);
 }
 DelayEditor::~DelayEditor(){stopTimer();setLookAndFeel(nullptr);}
@@ -156,7 +183,7 @@ void DelayEditor::makeControl(int i) {
         if(i==stereoOffset)tooltipClient->setTooltip("Sub-millisecond to 20 ms inter-channel Haas timing offset on the wet stereo path.");
         if(i==duckHold)tooltipClient->setTooltip("Holds and extends the ducking envelope so echoes stay tucked during fast phrases before blooming.");
         if(i==drive)tooltipClient->setTooltip("Saturation amount for Tape and BBD characters.");
-        if(i==duckMode)tooltipClient->setTooltip("Beat: rhythmic wet ducking. Input: duck echoes while the incoming audio is loud. Rate sets recovery.");
+        if(i==duckMode)tooltipClient->setTooltip("Beat: rhythmic wet ducking. Input: duck echoes while the incoming audio is loud. Sidechain: duck from another track, such as a kick. With no sidechain connected, the echoes stay open.");
         if(i==routing)tooltipClient->setTooltip("Stereo uses tap pan. Ping Pong crossfeeds each repeat so echoes bounce left and right. Mono sums the wet signal.");
         if(i==glitch)tooltipClient->setTooltip("Chops the wet signal after the delay: Gate, Stutter, or a backwards slice. Reverse length reverses the echoes themselves.");
         if(i==reverse)tooltipClient->setTooltip("Plays each echo backwards in tempo-synced chunks, with click-free crossfades. Feedback and ping-pong stay active.");
@@ -183,6 +210,10 @@ void DelayEditor::resized() {
         }
     }
     prevPreset.setBounds(641,20,88,40);preset.setBounds(737,20,263,40);nextPreset.setBounds(1008,20,78,40);place(bypass,{1094,20,86,40},false);pattern.setBounds(645,104,195,36);grid.setBounds(39,149,801,220);
+    undoButton.setBounds(16,60,48,36);redoButton.setBounds(68,60,48,36);
+    slotA.setBounds(124,60,44,36);slotB.setBounds(172,60,44,36);copyAB.setBounds(220,60,52,36);copyBA.setBounds(276,60,52,36);
+    if(browser) browser->setBounds(336,60,544,36);
+    scopeFrame.setBounds(622,808,256,32);
     place(routing,{896,220,132,36},false);place(character,{1040,220,124,36},false);
     place(drive,{901,272,119,24});place(motion,{1038,272,119,24});
     place(wobbleRate,{901,327,119,30});place(wobbleShape,{1038,322,124,36});
@@ -195,9 +226,9 @@ void DelayEditor::resized() {
     place(feedback,{30,688,88,119});place(decay,{122,688,88,119});place(tempo,{213,688,78,119});
     place(highPass,{338,655,102,115});place(lowPass,{466,655,102,115});
     place(hpSlope,{332,796,117,36},false);place(lpSlope,{460,796,117,36},false);
-    place(duckMode,{627,632,113,36},false);place(glitch,{754,632,113,36},false);
-    place(duck,{634,676,100,98});place(glitchAmount,{760,676,100,98});
-    place(duckRate,{627,796,113,36},false);place(glitchRate,{754,796,113,36},false);
+    place(duckMode,{618,632,124,36},false);place(glitch,{750,632,124,36},false);
+    place(duck,{628,672,96,74});place(glitchAmount,{756,672,96,74});
+    place(duckRate,{618,768,124,36},false);place(glitchRate,{750,768,124,36},false);
     place(mix,{916,688,87,119});place(width,{1007,688,77,119});place(output,{1090,688,77,119});
     place(diffusion,{46,1132,92,112});place(diffusionSize,{151,1132,92,112});
     place(shimmer,{256,1132,92,112});place(stereoOffset,{361,1132,92,112});place(duckHold,{466,1132,92,112});
@@ -240,12 +271,27 @@ void DelayEditor::paintContent(juce::Graphics& g) {
     panel(g,{315,596,280,250},"ECHO FILTERS",theme::kAccentB);
     text(g,"IN THE FEEDBACK LOOP",{335,634,236,17},10,theme::kTextDim);
     panel(g,{610,596,280,250},"DUCK & GLITCH",theme::kAccentFx);
-    const float duckAtten = juce::jlimit(0.f, 1.f, 1.f - owner.duckMeter.load());
-    g.setColour(theme::kTrack);
-    g.fillRoundedRectangle(774, 621, 96, 4, 2);
-    if (duckAtten > 0.01f) {
-        g.setColour(theme::kAccentFx);
-        g.fillRoundedRectangle(774, 621, 96.f * duckAtten, 4, 2);
+    {
+        const auto area=scopeFrame.getBounds().toFloat();
+        g.setColour(theme::kBackground.withAlpha(.55f));g.fillRoundedRectangle(area,4);
+        g.setColour(theme::kPanelEdge.withAlpha(.8f));g.drawRoundedRectangle(area.reduced(.5f),4,1);
+        g.setColour(theme::kPanelEdge.withAlpha(.45f));g.drawVerticalLine(static_cast<int>(area.getCentreX()),area.getY()+2,area.getBottom()-2);
+        juce::Path kick,curve;
+        for(int i=0;i<DelayProcessor::scopeBinCount;++i) {
+            const float x=area.getX()+(static_cast<float>(i)+.5f)/DelayProcessor::scopeBinCount*area.getWidth();
+            const float side=juce::jlimit(0.f,1.f,owner.scopeSidechain(i));
+            const float gain=juce::jlimit(0.f,1.f,owner.scopeDuck(i));
+            const float yKick=area.getBottom()-2.f-side*(area.getHeight()-4.f);
+            const float yDuck=area.getY()+2.f+(1.f-gain)*(area.getHeight()-4.f);
+            if(i==0){kick.startNewSubPath(area.getX(),area.getBottom());kick.lineTo(x,yKick);curve.startNewSubPath(x,yDuck);}
+            else {kick.lineTo(x,yKick);curve.lineTo(x,yDuck);}
+        }
+        kick.lineTo(area.getRight(),area.getBottom());kick.closeSubPath();
+        g.setColour(theme::kAccentB.withAlpha(.45f));g.fillPath(kick);
+        g.setColour(theme::kAccentA);g.strokePath(curve,juce::PathStrokeType(1.6f));
+        const float headX=area.getX()+(owner.scopePlayhead()+.5f)/DelayProcessor::scopeBinCount*area.getWidth();
+        g.setColour(theme::kText.withAlpha(.7f));g.drawVerticalLine(static_cast<int>(headX),area.getY()+1,area.getBottom()-1);
+        text(g,"SIDECHAIN",{static_cast<int>(area.getX())+6,static_cast<int>(area.getY())+1,78,12},9,theme::kTextDim);
     }
     panel(g,{905,596,275,250},"OUTPUT",theme::kAccentOut);
     panel(g,{20,1090,1160,190},"DIFFUSION / SHIMMER / REVERSE",theme::kAccentB);
@@ -266,11 +312,25 @@ void DelayEditor::timerCallback() {
     controls[diffusionSize]->setEnabled(s.diffusion>0);
     controls[static_cast<std::size_t>(reverseRate)]->setEnabled(s.reverse>.01f);
     controls[drive]->setEnabled(s.character==Character::tape||s.character==Character::bbd);
+    undoButton.setEnabled(owner.history.canUndo());redoButton.setEnabled(owner.history.canRedo());
+    slotA.setToggleState(owner.ab.active()==0,juce::dontSendNotification);
+    slotB.setToggleState(owner.ab.active()==1,juce::dontSendNotification);
     grid.repaint();
     content.repaint(440, 24, 195, 32);
     content.repaint(894, 106, 272, 92);
-    content.repaint(770, 618, 104, 10);
+    content.repaint(scopeFrame.getBounds());
     content.repaint(628, 854, 150, 20);
     content.repaint(922, 645, 242, 10);
+}
+void DelayEditor::addSuiteButton(juce::TextButton& button,const juce::String& id,const juce::String& tip) {
+    button.setComponentID(id);button.setTooltip(tip);content.addAndMakeVisible(button);
+}
+bool DelayEditor::keyPressed(const juce::KeyPress& key) {
+    if(key.getModifiers().isCommandDown()&&(key.getKeyCode()=='Z'||key.getTextCharacter()=='z'||key.getTextCharacter()=='Z')) {
+        if(key.getModifiers().isShiftDown()) owner.history.redo();
+        else owner.history.undo();
+        return true;
+    }
+    return false;
 }
 }

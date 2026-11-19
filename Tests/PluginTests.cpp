@@ -1,4 +1,5 @@
 #include "PluginProcessor.h"
+#include "suite/PresetBrowser.h"
 #include <juce_audio_formats/juce_audio_formats.h>
 #include <algorithm>
 #include <array>
@@ -297,4 +298,189 @@ static void factoryVoices() {
         require(std::abs(dc/(2.f*frames))<.01f,(p.getProgramName(i)+" has DC").toRawUTF8());
     }
 }
-int main(int argc,char** argv){juce::ScopedJuceInitialiser_GUI gui;int errors=0;for(const auto& [name,test]:std::initializer_list<std::pair<const char*,void(*)()>>{{"factory voices",factoryVoices},{"previous factory bank",previousFactoryBank},{"factory impulse responses and rhythms",bankAudio},{"filtered tap host tail",filteredTapTail},{"diffusion host tail",diffusionHostTail},{"scrollable control access",scrollableControls},{"host audio/bypass",audio},{"session recall",recall},{"malformed parameter state",malformedState},{"preset while bypassed",presetWhileBypassed}})try{test();std::cout<<"PASS "<<name<<'\n';}catch(const std::exception& e){std::cerr<<"FAIL "<<name<<": "<<e.what()<<'\n';++errors;}try{ui(juce::File::getCurrentWorkingDirectory().getChildFile(argc>1?argv[1]:"docs/screenshots"));std::cout<<"PASS native controls and actual editor screenshots\n";}catch(const std::exception& e){std::cerr<<"FAIL UI: "<<e.what()<<'\n';++errors;}return errors?1:0;}
+static void sidechainAndSuite() {
+    auto layoutOf=[](juce::AudioChannelSet main,juce::AudioChannelSet side) {
+        juce::AudioProcessor::BusesLayout layout;
+        layout.inputBuses.add(main);layout.inputBuses.add(side);layout.outputBuses.add(main);return layout;
+    };
+    DelayProcessor defaults;
+    require(defaults.getBusCount(true)==2,"Sidechain input bus is missing");
+    require(defaults.getBus(true,1)->getName()=="Sidechain","Sidechain bus has the wrong name");
+    require(!defaults.getBus(true,1)->isEnabled(),"Sidechain bus is on before a host connects it");
+    require(defaults.isBusesLayoutSupported(defaults.getBusesLayout()),"Default layout is rejected");
+    const auto stereo=juce::AudioChannelSet::stereo(),mono=juce::AudioChannelSet::mono(),off=juce::AudioChannelSet::disabled();
+    require(defaults.isBusesLayoutSupported(layoutOf(stereo,off)),"Stereo without a sidechain is rejected");
+    require(defaults.isBusesLayoutSupported(layoutOf(stereo,stereo)),"Stereo sidechain is rejected");
+    require(defaults.isBusesLayoutSupported(layoutOf(stereo,mono)),"Mono sidechain on a stereo track is rejected");
+    require(defaults.isBusesLayoutSupported(layoutOf(mono,mono)),"Mono main and sidechain is rejected");
+    require(defaults.isBusesLayoutSupported(layoutOf(mono,off)),"Mono without a sidechain is rejected");
+    auto mismatch=layoutOf(stereo,stereo);mismatch.outputBuses.getReference(0)=mono;
+    require(!defaults.isBusesLayoutSupported(mismatch),"Mismatched main channels were accepted");
+    auto quad=layoutOf(stereo,juce::AudioChannelSet::quadraphonic());
+    require(!defaults.isBusesLayoutSupported(quad),"Surround sidechain was accepted");
+
+    constexpr int rate=8000,frames=6000;
+    auto echoAt=[&](DelayProcessor& p,bool sidechain,bool driveSidechain) {
+        if(sidechain) require(p.setBusesLayout(layoutOf(stereo,stereo)),"Could not enable the sidechain");
+        p.prepareToPlay(rate,256);
+        const int channels=p.getTotalNumInputChannels();
+        juce::AudioBuffer<float> audio(channels,frames);audio.clear();audio.setSample(0,0,1.f);
+        if(sidechain&&driveSidechain) for(int i=0;i<frames;++i){audio.setSample(2,i,.9f);if(channels>3) audio.setSample(3,i,.9f);}
+        juce::MidiBuffer midi;p.processBlock(audio,midi);
+        return audio.getSample(0,4000);
+    };
+    DelayProcessor fallback;clean(fallback);fallback.setPlainValue(duck,100);fallback.setPlainValue(duckMode,2);fallback.setPlainValue(mix,100);fallback.setPlainValue(feedback,0);
+    require(std::abs(echoAt(fallback,false,false)-1.f)<.05f,"Sidechain ducking closes the echoes when nothing is connected");
+    DelayProcessor quiet;clean(quiet);quiet.setPlainValue(duck,100);quiet.setPlainValue(duckMode,2);quiet.setPlainValue(mix,100);quiet.setPlainValue(feedback,0);
+    require(std::abs(echoAt(quiet,true,false)-1.f)<.05f,"A connected but silent sidechain still ducks");
+    DelayProcessor kicked;clean(kicked);kicked.setPlainValue(duck,100);kicked.setPlainValue(duckMode,2);kicked.setPlainValue(mix,100);kicked.setPlainValue(feedback,0);
+    require(kicked.setBusesLayout(layoutOf(stereo,stereo)),"Kick layout failed");
+    kicked.prepareToPlay(rate,128);
+    juce::AudioBuffer<float> kick(4,frames);kick.clear();kick.setSample(0,0,1.f);
+    for(int i=3200;i<5000;++i){const float k=std::sin(2.f*3.14159265f*60.f*i/rate)*std::exp(-(i-3200)/800.f);kick.setSample(2,i,k);kick.setSample(3,i,k);}
+    juce::MidiBuffer midi;kicked.processBlock(kick,midi);
+    require(std::abs(kick.getSample(0,4000))<.25f,"Sidechain kick did not duck the echo");
+    require(std::abs(kick.getSample(0,200))<.02f,"Sidechain kick leaked into the dry output");
+    DelayProcessor inputMode;clean(inputMode);inputMode.setPlainValue(duck,100);inputMode.setPlainValue(duckMode,1);inputMode.setPlainValue(mix,100);
+    const float withKick=echoAt(inputMode,true,true);
+    DelayProcessor inputOnly;clean(inputOnly);inputOnly.setPlainValue(duck,100);inputOnly.setPlainValue(duckMode,1);inputOnly.setPlainValue(mix,100);
+    const float noKick=echoAt(inputOnly,false,false);
+    require(std::abs(withKick-noKick)<.02f,"Input ducking followed the sidechain");
+    require(kicked.settings().duckSource==DuckSource::sidechain&&!kicked.settings().inputDuck,"Sidechain is stored as input ducking");
+    DelayProcessor recalled;recalled.setPlainValue(duckMode,1);
+    juce::MemoryBlock saved;recalled.getStateInformation(saved);
+    recalled.setPlainValue(duckMode,2);
+    recalled.setStateInformation(saved.getData(),static_cast<int>(saved.getSize()));
+    require(recalled.settings().duckSource==DuckSource::input&&recalled.settings().inputDuck,"An old Input duck setting now reads as Sidechain");
+
+    DelayProcessor edits;
+    const float mix0=edits.values[mix]->load(),feedback0=edits.values[feedback]->load();
+    edits.history.beginGesture();edits.setPlainValue(mix,12);edits.setPlainValue(feedback,46);edits.history.endGesture();
+    require(edits.history.canUndo(),"A grouped edit was not recorded");
+    edits.history.undo();
+    require(std::abs(edits.values[mix]->load()-mix0)<.02f&&std::abs(edits.values[feedback]->load()-feedback0)<.02f,"Undo restored only one control in the gesture");
+    edits.history.redo();
+    require(std::abs(edits.values[mix]->load()-12)<.02f&&std::abs(edits.values[feedback]->load()-46)<.02f,"Redo did not restore the grouped edit");
+    edits.setCurrentProgram(0);const float programMix=edits.values[mix]->load();
+    edits.setCurrentProgram(3);
+    require(edits.getCurrentProgram()==3&&std::abs(edits.values[mix]->load()-programMix)>.5f,"Program change did not move");
+    edits.history.undo();
+    require(edits.getCurrentProgram()==0&&std::abs(edits.values[mix]->load()-programMix)<.02f,"Undo did not restore the previous program");
+    edits.history.redo();
+    require(edits.getCurrentProgram()==3,"Redo did not restore the program");
+    std::unique_ptr<juce::AudioProcessorEditor> keys(edits.createEditor());
+    const float beforeKey=edits.values[mix]->load();
+    edits.history.beginGesture();edits.setPlainValue(mix,70);edits.history.endGesture();
+    require(keys->keyPressed(juce::KeyPress('Z',juce::ModifierKeys::commandModifier,0)),"Undo shortcut was ignored");
+    require(std::abs(edits.values[mix]->load()-beforeKey)<.02f,"Ctrl/Cmd+Z did not undo");
+    require(keys->keyPressed(juce::KeyPress('Z',juce::ModifierKeys::commandModifier|juce::ModifierKeys::shiftModifier,0)),"Redo shortcut was ignored");
+    require(std::abs(edits.values[mix]->load()-70)<.02f,"Shift+Ctrl/Cmd+Z did not redo");
+
+    DelayProcessor slots;slots.setPlainValue(mix,80);slots.ab.copyAtoB();slots.setPlainValue(mix,15);
+    juce::MemoryBlock slotState;slots.getStateInformation(slotState);
+    DelayProcessor restored;restored.setStateInformation(slotState.getData(),static_cast<int>(slotState.getSize()));
+    require(restored.ab.active()==0&&std::abs(restored.values[mix]->load()-15)<.02f,"A/B recall lost the active slot");
+    restored.ab.select(1);
+    require(std::abs(restored.values[mix]->load()-80)<.02f,"A/B slot B did not keep the copied setup");
+    restored.setPlainValue(mix,50);restored.ab.copyBtoA();restored.ab.select(0);
+    require(std::abs(restored.values[mix]->load()-50)<.02f,"Copy B to A did not replace A");
+
+    auto root=juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("oed-preset-suite");
+    root.deleteRecursively();root.createDirectory();
+    const auto presetDir=suite::PresetStore::defaultRoot("openEDMDelay").getChildFile("Presets");
+    require(presetDir.getFileName()=="Presets"&&presetDir.getParentDirectory().getFileName()=="openEDMDelay"&&presetDir.getParentDirectory().getParentDirectory().getFileName()=="Alan Marcero","User presets are not stored in Documents/Alan Marcero/openEDMDelay/Presets");
+    DelayProcessor presets;
+    suite::PresetBrowser browser(root,suite::PresetHandlers{
+        .count=[&]{return presets.getNumPrograms();},
+        .name=[&](int index){return presets.getProgramName(index);},
+        .loadFactory=[&](int index){presets.setCurrentProgram(index);},
+        .capture=[&]{return presets.captureState();},
+        .loadUser=[&](const juce::MemoryBlock& block){presets.applyUserPreset(block);}
+    });
+    browser.setBounds(0,0,544,36);
+    require(browser.visibleNames().size()==presets.getNumPrograms(),"The browser dropped a factory preset");
+    browser.setSearch("piano");
+    require(browser.visibleNames().size()>=6,"Piano programs are missing from search");
+    for(const auto& name:browser.visibleNames()) require(name.containsIgnoreCase("piano"),"Search showed a preset outside the query");
+    browser.setSearch("zzznone");require(browser.visibleNames().isEmpty(),"Search kept non-matching presets");
+    browser.setSearch("");
+    const auto originalName=presets.getProgramName(0);
+    browser.selectFactory(0);
+    require(browser.selectionIsFactory(),"Factory row was not selected");
+    require(!browser.renameSelected()&&!browser.deleteSelected(),"Factory preset was renamed or deleted");
+    require(presets.getProgramName(0)==originalName&&presets.getNumPrograms()==72,"Factory bank changed");
+    presets.setPlainValue(mix,61);
+    browser.setSearch("Night Kick");
+    dynamic_cast<juce::Button*>(find(browser,"presetSave"))->triggerClick();
+    juce::MessageManager::getInstance()->runDispatchLoopUntil(50);
+    browser.setSearch("");
+    require(browser.visibleNames().contains("Night Kick"),"Saved user preset is not in the browser");
+    presets.setPlainValue(mix,10);
+    auto* list=dynamic_cast<juce::ComboBox*>(find(browser,"presetList"));
+    int userId=0;for(int i=0;i<list->getNumItems();++i) if(list->getItemText(i).contains("Night Kick")) userId=list->getItemId(i);
+    require(userId>0,"Saved preset has no menu row");
+    list->setSelectedId(0,juce::dontSendNotification);
+    list->setSelectedId(userId,juce::sendNotificationSync);
+    require(std::abs(presets.values[mix]->load()-61)<.02f,"Loading a user preset did not restore the sound");
+    require(!browser.selectionIsFactory(),"User preset is marked read-only");
+    browser.setSearch("Morning Kick");
+    require(browser.renameSelected(),"User preset rename failed");
+    browser.setSearch("");
+    require(browser.visibleNames().contains("Morning Kick")&&!browser.visibleNames().contains("Night Kick"),"Rename left the old user preset in the list");
+    browser.toggleFavorite();
+    require(browser.visibleNames()[0].contains("Morning Kick"),"Favorite is not listed first");
+    require(browser.deleteSelected(),"User preset delete failed");
+    browser.setSearch("");
+    require(!browser.visibleNames().contains("Morning Kick"),"Deleted user preset is still listed");
+    require(presets.getNumPrograms()==72,"Deleting a user preset removed a factory program");
+
+    if(juce::File("/opt/cursor/artifacts").isDirectory()) {
+        DelayProcessor demo;clean(demo);demo.setPlainValue(mix,45);demo.setPlainValue(feedback,35);demo.setPlainValue(duck,100);demo.setPlainValue(duckMode,2);demo.setPlainValue(gridRate,7);demo.setPlainValue(duckRate,7);
+        require(demo.setBusesLayout(layoutOf(stereo,stereo)),"Demo layout failed");
+        constexpr int demoRate=44100,demoFrames=demoRate*4,block=256;
+        demo.prepareToPlay(demoRate,block);
+        juce::AudioBuffer<float> song(4,demoFrames);song.clear();
+        const double beat=demoRate*60.0/120.0;
+        for(int i=0;i<demoFrames;++i) {
+            const double phase=std::fmod(i/beat,1.0),beatIndex=std::floor(i/beat);
+            if(phase<0.09){const float env=std::exp(-static_cast<float>(phase*beat)/900.f);const float kick=std::sin(2.f*3.14159265f*52.f*i/demoRate)*env;song.setSample(2,i,kick);song.setSample(3,i,kick*.9f);}
+            if(static_cast<int>(beatIndex)%2==0&&phase<0.16) {
+                const float env=std::exp(-static_cast<float>(phase*8.f));
+                float chord=0.f;for(float f:{196.f,247.f,294.f,392.f}) chord+=std::sin(2.f*3.14159265f*f*i/demoRate);
+                song.setSample(0,i,chord*env*.18f);song.setSample(1,i,chord*env*.16f);
+            }
+        }
+        juce::MidiBuffer songMidi;
+        for(int offset=0;offset<demoFrames;offset+=block) {
+            const int count=std::min(block,demoFrames-offset);
+            juce::AudioBuffer<float> slice(4,count);
+            for(int c=0;c<4;++c) slice.copyFrom(c,0,song,c,offset,count);
+            demo.processBlock(slice,songMidi);
+            for(int c=0;c<2;++c) song.copyFrom(c,offset,slice,c,0,count);
+        }
+        auto wav=juce::File("/opt/cursor/artifacts/sidechain-duck.wav");
+        auto stream=wav.createOutputStream();
+        require(stream!=nullptr,"Could not create the demo wav");
+        stream->setPosition(0);stream->truncate();
+        std::unique_ptr<juce::OutputStream> output=std::move(stream);
+        const auto options=juce::AudioFormatWriterOptions{}.withSampleRate(demoRate).withNumChannels(2).withBitsPerSample(16);
+        auto writer=juce::WavAudioFormat{}.createWriterFor(output,options);
+        require(writer!=nullptr,"Could not write a 16-bit wav");
+        require(writer->writeFromAudioSampleBuffer(song,0,demoFrames),"Demo wav write failed");
+        writer.reset();
+        require(wav.getSize()<12*1024*1024,"Demo wav is over 12 MB");
+        std::unique_ptr<juce::AudioProcessorEditor> editor(demo.createEditor());
+        editor->setVisible(true);
+        juce::MessageManager::getInstance()->runDispatchLoopUntil(30);
+        auto png=juce::File("/opt/cursor/artifacts/ui.png");
+        std::unique_ptr<juce::OutputStream> image=png.createOutputStream();
+        require(image!=nullptr&&juce::PNGImageFormat{}.writeImageToStream(editor->createComponentSnapshot(editor->getLocalBounds(),true,1.5f),*image),"UI screenshot failed");
+        auto* frame=find(*editor,"sidechainScope");
+        require(frame!=nullptr,"Sidechain scope is missing");
+        const auto area=editor->getLocalArea(frame,frame->getLocalBounds());
+        const auto shot=editor->createComponentSnapshot(area);
+        int warm=0;for(int y=0;y<shot.getHeight();++y) for(int x=0;x<shot.getWidth();++x){const auto c=shot.getPixelAt(x,y);if(c.getRed()>70&&c.getRed()>c.getBlue()+25&&c.getGreen()>45) ++warm;}
+        require(warm>30,"Sidechain kick is not drawn behind the duck curve");
+    }
+}
+int main(int argc,char** argv){juce::ScopedJuceInitialiser_GUI gui;int errors=0;for(const auto& [name,test]:std::initializer_list<std::pair<const char*,void(*)()>>{{"sidechain buses, ducking, undo, A/B, presets",sidechainAndSuite},{"factory voices",factoryVoices},{"previous factory bank",previousFactoryBank},{"factory impulse responses and rhythms",bankAudio},{"filtered tap host tail",filteredTapTail},{"diffusion host tail",diffusionHostTail},{"scrollable control access",scrollableControls},{"host audio/bypass",audio},{"session recall",recall},{"malformed parameter state",malformedState},{"preset while bypassed",presetWhileBypassed}})try{test();std::cout<<"PASS "<<name<<'\n';}catch(const std::exception& e){std::cerr<<"FAIL "<<name<<": "<<e.what()<<'\n';++errors;}try{ui(juce::File::getCurrentWorkingDirectory().getChildFile(argc>1?argv[1]:"docs/screenshots"));std::cout<<"PASS native controls and actual editor screenshots\n";}catch(const std::exception& e){std::cerr<<"FAIL UI: "<<e.what()<<'\n';++errors;}return errors?1:0;}

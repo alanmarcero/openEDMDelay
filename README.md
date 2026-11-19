@@ -1,4 +1,4 @@
-# openEDMDelay v1.6.0
+# openEDMDelay v1.7.0
 
 Build beat-synced echoes from eight taps. Use it for rhythmic repeats, stereo movement, and reversed echoes.
 
@@ -34,11 +34,14 @@ Start with **Ping-Pong / Dotted Eighth** on a pluck, **Tape Dub / Quarter** on a
 - **Per-tap shaping:** Set Chance from 0–100% and add 1–8 ratchets to each tap. Add optional 12 dB per octave high-pass or low-pass filters, color, and drive.
 - **Groove controls:** Adjust Swing or choose Manual, Shuffle, or Broken groove. Pattern Morph moves taps toward their editable target steps.
 - **Feedback and diffusion:** Feedback repeats the phrase. Decay reduces later repeats. High-pass and low-pass feedback filters offer Off, 6, 12, 24, or 48 dB per octave. Diffusion softens repeats with Amount and Size controls from 2 to 30 ms.
-- **Hold and beat effects:** Hold recirculates the current phrase without new input. Duck the wet signal from the beat or input level. Duck Rate controls beat repetition or follower recovery.
+- **Hold and beat effects:** Hold recirculates the current phrase without new input. Duck the wet signal from the beat, the input, or a sidechain. Duck Rate sets how fast a beat duck repeats, and how quickly input or sidechain ducking lets go. A kick on the sidechain input tucks the echoes under the hit. If nothing is connected, sidechain ducking stays open.
+- **Sidechain view:** The duck panel draws the sidechain, beat-locked over two beats, behind the duck curve so you can see the kick against the dip.
 - **Wet effects:** Add Gate, Stutter, or Reverse effects with their own beat rate and mix.
 - **Output:** Set dry/wet Mix, stereo Width, and output gain. Use bypass. Controls support host automation and session recall. The dry path adds no latency.
 
-Delay grids and beat effects follow host tempo from 20 to 400 BPM when available. The internal clock uses 120 BPM by default. The animated tape reels turn once every two beats, follow host seeks, and hold their position when transport stops. Standalone and hosts without a playhead use the internal clock. The audio beat effects continue on their internal clock when the host stops. Input ducking listens to the main input. There is no separate sidechain bus.
+Delay grids and beat effects follow host tempo from 20 to 400 BPM when available. The internal clock uses 120 BPM by default. The animated tape reels turn once every two beats, follow host seeks, and hold their position when transport stops. Standalone and hosts without a playhead use the internal clock. The audio beat effects continue on their internal clock when the host stops.
+
+Undo and redo cover knob, button, and preset edits (Ctrl/Cmd+Z, Shift+Ctrl/Cmd+Z). A and B keep two full setups, and you can copy either way. User presets are saved in Documents/Alan Marcero/openEDMDelay/Presets. Search and favorites cover factory and user presets. Factory presets stay read-only.
 
 ![Factory program with the tap field and routing controls](docs/screenshots/openEDMDelay-glitch.png)
 
@@ -58,4 +61,4 @@ The plugin supports mono and stereo audio. Rescan your DAW after installing. Set
 
 ## License
 
-openEDMDelay uses the AGPL-3.0 license. See [LICENSE](LICENSE) and [third-party notices](THIRD_PARTY.md).
+openEDMDelay is released under the MIT license. See [LICENSE](LICENSE). Third-party notices, including JUCE's own licence, are in [THIRD_PARTY.md](THIRD_PARTY.md).

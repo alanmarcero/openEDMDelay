@@ -121,7 +121,7 @@ float DelayEngine::readReverse(const std::vector<float>& buffer,double base,doub
     };
     return grain(phase)+grain(phase+.5);
 }
-void DelayEngine::process(float* left,float* right,int frames,const Settings& s,const Transport& t) {
+void DelayEngine::process(float* left,float* right,int frames,const Settings& s,const Transport& t,const float* sideLeft,const float* sideRight) {
     if(ring[0].empty()||frames<=0)return;
     const double bpm=std::isfinite(t.bpm)?std::clamp(t.bpm,20.,400.):120.;
     const double beatSamples=sampleRate*60/bpm,unit=beatSamples*rate(s.rate);
@@ -178,6 +178,7 @@ void DelayEngine::process(float* left,float* right,int frames,const Settings& s,
     const float freezeTolerance=std::numeric_limits<float>::epsilon()/smooth;
     const double tapeSmooth=1-std::exp(-1/(sampleRate*.12));
     const float attack=static_cast<float>(std::exp(-1/(sampleRate*.005)));
+    const float sideAttack=static_cast<float>(std::exp(-1/(sampleRate*.0015)));
     const double targetChunk=std::max(32.0,beatSamples*rate(s.reverseRate));
     const float chunkGlide=static_cast<float>(1-std::exp(-1/(sampleRate*.02)));
     for(int i=0;i<frames;++i) {
@@ -335,15 +336,27 @@ void DelayEngine::process(float* left,float* right,int frames,const Settings& s,
             wet[static_cast<std::size_t>(delayedCh)]=valA+(valB-valA)*part;
         }
         if(duck>1.e-5f){
-            const float releaseHoldScale=1.f+duckHold*3.f;
-            const float heldRelease=static_cast<float>(std::exp(-1/(beatSamples*rate(s.duckRate)*releaseHoldScale*.28)));
-            const float peak=std::max(std::abs(dryL),std::abs(dryR)),coeff=peak>envelope?attack:heldRelease;
-            envelope=peak+(envelope-peak)*coeff;
-            const double duckPhase=fraction(phase/rate(s.duckRate)+1.e-9);
-            const double holdFrac=duckHold*.55;
-            const double shapedPhase=duckPhase<=holdFrac?0.:(duckPhase-holdFrac)/std::max(1.e-4,1.-holdFrac);
-            const float u=static_cast<float>(1.-shapedPhase);
-            lastDuck=s.inputDuck?std::exp(-duck*envelope*8.f):1-duck*(u*u*u);
+            const bool followInput=s.inputDuck||s.duckSource==DuckSource::input;
+            const bool followSide=!followInput&&s.duckSource==DuckSource::sidechain;
+            if(followInput||followSide){
+                const float releaseHoldScale=1.f+duckHold*3.f;
+                const float heldRelease=static_cast<float>(std::exp(-1/(beatSamples*rate(s.duckRate)*releaseHoldScale*.28)));
+                float peak=0.f;
+                if(followInput) peak=std::max(std::abs(dryL),std::abs(dryR));
+                else {
+                    if(sideLeft!=nullptr) peak=std::abs(sideLeft[i]);
+                    if(sideRight!=nullptr) peak=std::max(peak,std::abs(sideRight[i]));
+                }
+                const float coeff=peak>envelope?(followSide?sideAttack:attack):heldRelease;
+                envelope=peak+(envelope-peak)*coeff;
+                lastDuck=std::exp(-duck*envelope*8.f);
+            }else{
+                const double duckPhase=fraction(phase/rate(s.duckRate)+1.e-9);
+                const double holdFrac=duckHold*.55;
+                const double shapedPhase=duckPhase<=holdFrac?0.:(duckPhase-holdFrac)/std::max(1.e-4,1.-holdFrac);
+                const float u=static_cast<float>(1.-shapedPhase);
+                lastDuck=1-duck*(u*u*u);
+            }
         }else{
             lastDuck=1.f;
         }

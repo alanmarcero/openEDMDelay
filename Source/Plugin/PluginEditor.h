@@ -1,6 +1,7 @@
 #pragma once
 #include "PluginProcessor.h"
 #include "DelayLookAndFeel.h"
+#include "suite/PresetBrowser.h"
 namespace oed {
 class TapGrid final:public juce::Component {
 public:
@@ -20,6 +21,7 @@ public:
     ~DelayEditor() override;
     void paint(juce::Graphics&) override;
     void resized() override;
+    bool keyPressed(const juce::KeyPress&) override;
 private:
     void timerCallback() override;
     void paintContent(juce::Graphics&);
@@ -30,6 +32,7 @@ private:
     };
     void place(int,juce::Rectangle<int>,bool label=true);
     void makeControl(int);
+    void addSuiteButton(juce::TextButton&,const juce::String& id,const juce::String& tip);
     DelayProcessor& owner;
     DelayLookAndFeel look;
     TapGrid grid;
@@ -43,6 +46,9 @@ private:
     std::vector<std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment>> buttons;
     juce::ComboBox preset,pattern,selectedTap;
     juce::TextButton prevPreset{"Previous"}, nextPreset{"Next"};
+    juce::TextButton undoButton{"Undo"}, redoButton{"Redo"}, slotA{"A"}, slotB{"B"}, copyAB{"A>B"}, copyBA{"B>A"};
+    std::unique_ptr<suite::PresetBrowser> browser;
+    juce::Component scopeFrame;
     juce::TooltipWindow tooltip{this,650};
     int shownProgram=-1;
 };

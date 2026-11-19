@@ -1,8 +1,13 @@
 #pragma once
 #include "Parameters.h"
+#include "suite/ABCompare.h"
+#include "suite/ParameterUndo.h"
+#include <atomic>
+#include <array>
 namespace oed {
 class DelayProcessor final:public juce::AudioProcessor {
 public:
+    static constexpr int scopeBinCount=64;
     DelayProcessor();
     const juce::String getName() const override {return "openEDMDelay";}
     bool acceptsMidi() const override {return false;}
@@ -29,20 +34,32 @@ public:
     int displayedProgram() const {return oldBank.load() ? -1 : program.load();}
     void setPlainValue(int,float);
     void applyPattern(int);
+    void recallProgram(int index,bool legacyBank);
+    juce::MemoryBlock captureState();
+    bool restoreParameters(const void*,int);
+    void applyUserPreset(const juce::MemoryBlock&);
     Settings settings() const {return readSettings(values);}
+    float scopeSidechain(int bin) const {return sideScope[static_cast<std::size_t>(juce::jlimit(0,scopeBinCount-1,bin))].load(std::memory_order_relaxed);}
+    float scopeDuck(int bin) const {return duckScope[static_cast<std::size_t>(juce::jlimit(0,scopeBinCount-1,bin))].load(std::memory_order_relaxed);}
+    int scopePlayhead() const {return scopeHead.load(std::memory_order_relaxed);}
     juce::AudioProcessorValueTreeState parameters;
+    suite::ParameterUndo history;
+    suite::ABCompare ab;
     ParameterValues values{};
     std::atomic<double> displayedBpm{120},displayedPhase{0};
     std::atomic<bool> hostSync{false};
     std::atomic<float> duckMeter{1},outputPeak{0};
 private:
     Transport updateClock(int frames);
+    void captureScope(const float* left,const float* right,int frames,double ppq,double bpm,float duck);
     DelayEngine engine;
     std::atomic<bool> oldBank{false};
     std::atomic<int> program{0};
     std::atomic<bool> resetPending{false};
     bool wasBypassed=false;
     double internalPhase=0, currentSampleRate=48000;
+    std::array<std::atomic<float>,scopeBinCount> sideScope{},duckScope{};
+    std::atomic<int> scopeHead{0};
 };
 const juce::StringArray& patternNames();
 }
