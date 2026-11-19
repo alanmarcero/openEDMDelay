@@ -16,6 +16,13 @@ float wobbleNoise(std::uint64_t step) {
     value^=value>>16;value*=0x7feb352du;value^=value>>15;value*=0x846ca68bu;value^=value>>16;
     return static_cast<float>(value/2147483647.5-1.0);
 }
+float saturate(float x,float drive,bool tape) {
+    const float amount=clamp(drive,0.f,1.f);
+    const float k=1.f+amount*(tape?3.4f:2.2f);
+    float y=x*k;
+    if(tape&&amount>0.f) y+=(0.2f*amount)*y*std::abs(y);
+    return std::tanh(y)/k;
+}
 float wobbleWave(double phase,WobbleShape shape) {
     const double position=fraction(phase);
     switch(shape) {
@@ -77,7 +84,7 @@ void DelayEngine::prepare(double sr) {
 void DelayEngine::reset() {
     write=wetWrite=capture=valid=wetValid=0;phase=0;lastSlice=-1;initialized=false;
     diffusionWrite=0;wobblePhase=0;shimmerPhase=0;diffusion=0;diffusionSize=12;shimmer=0;stereoOffset=0;duckHold=0;
-    envelope=0;lastDuck=1;tone={};held={};holdCounter=0;transition=0;
+    envelope=0;lastDuck=1;tone={};toneHp={};held={};holdCounter=0;transition=0;reverseMix=0;wobbleValue=0;reverseChunk=1;
     for(auto& f:hp)f.clear();for(auto& f:lp)f.clear();
     for(auto& pair:tapHp)for(auto& f:pair)f.clear();
     for(auto& pair:tapLp)for(auto& f:pair)f.clear();
@@ -90,6 +97,29 @@ float DelayEngine::read(const std::vector<float>& buffer,double time) const {
     const auto a=(write+buffer.size()-whole)%buffer.size(),b=(a+buffer.size()-1)%buffer.size();
     const float av=whole<=valid?buffer[a]:0,bv=whole+1<=valid?buffer[b]:0;
     return av+(bv-av)*part;
+}
+float DelayEngine::readHermite(const std::vector<float>& buffer,double time) const {
+    if(time<3.0) return read(buffer,time);
+    time=std::clamp(time,2.0,static_cast<double>(buffer.size())-4.0);
+    const auto i=static_cast<std::size_t>(time);const float t=static_cast<float>(time-static_cast<double>(i));
+    const auto at=[&](std::size_t whole)->float {
+        if(whole>valid||whole+1>=buffer.size()) return 0.f;
+        return buffer[(write+buffer.size()-whole)%buffer.size()];
+    };
+    const float y0=at(i-1),y1=at(i),y2=at(i+1),y3=at(i+2);
+    const float c1=.5f*(y2-y0),c2=y0-2.5f*y1+2.f*y2-.5f*y3,c3=.5f*(y3-y0)+1.5f*(y1-y2);
+    return ((c3*t+c2)*t+c1)*t+y1;
+}
+float DelayEngine::readReverse(const std::vector<float>& buffer,double base,double chunk,double phase,bool hermite) const {
+    const auto sample=[&](double pos){return hermite?readHermite(buffer,pos):read(buffer,pos);};
+    const auto grain=[&](double ph) {
+        ph-=std::floor(ph);
+        const float w=static_cast<float>(.5-.5*std::cos(2*pi*ph));
+        // Full gain at phase 0.5 reads `base + chunk/2` ago, and the head runs backward at 1x.
+        const double pos=base+chunk*.5+(ph-.5)*2.0*chunk;
+        return sample(std::max(1.0,pos))*w;
+    };
+    return grain(phase)+grain(phase+.5);
 }
 void DelayEngine::process(float* left,float* right,int frames,const Settings& s,const Transport& t) {
     if(ring[0].empty()||frames<=0)return;
@@ -136,7 +166,8 @@ void DelayEngine::process(float* left,float* right,int frames,const Settings& s,
         delay=oldDelay=tapeDelay=nextDelay;previousLoop=oldLoop=tapeLoop=loop;gain=targetGain;pan=targetPan;
         feedback=targetFeedback;mix=targetMix;width=targetWidth;output=targetOutput;duck=targetDuck;
         glitchMix=targetGlitch;drive=targetDrive;motion=targetMotion;diffusion=targetDiffusion;diffusionSize=targetDiffusionSize;
-        shimmer=targetShimmer;stereoOffset=targetStereoOffset;duckHold=targetDuckHold;freezeMix=s.freeze?1.f:0.f;initialized=true;
+        shimmer=targetShimmer;stereoOffset=targetStereoOffset;duckHold=targetDuckHold;freezeMix=s.freeze?1.f:0.f;
+        reverseMix=clamp(s.reverse,0.f,1.f);reverseChunk=std::max(32.0,beatSamples*rate(s.reverseRate));initialized=true;
     } else if(transition==0 && (nextDelay!=delay||std::abs(loop-previousLoop)>.00001)) {
         oldDelay=delay;oldLoop=previousLoop;delay=nextDelay;previousLoop=loop;transition=fadeLength;
     }
@@ -146,8 +177,9 @@ void DelayEngine::process(float* left,float* right,int frames,const Settings& s,
     // Float rounding must not leave hold permanently short of unity at high sample rates.
     const float freezeTolerance=std::numeric_limits<float>::epsilon()/smooth;
     const double tapeSmooth=1-std::exp(-1/(sampleRate*.12));
-    const float toneCoefficient=static_cast<float>(1-std::exp(-2*pi*(s.character==Character::bbd?2600:6500)/sampleRate));
     const float attack=static_cast<float>(std::exp(-1/(sampleRate*.005)));
+    const double targetChunk=std::max(32.0,beatSamples*rate(s.reverseRate));
+    const float chunkGlide=static_cast<float>(1-std::exp(-1/(sampleRate*.02)));
     for(int i=0;i<frames;++i) {
         const float dryL=finite(left[i]),dryR=right?finite(right[i]):dryL;
         const auto approach=[smooth](float& value,float target){value+=(target-value)*smooth;};
@@ -157,14 +189,25 @@ void DelayEngine::process(float* left,float* right,int frames,const Settings& s,
         approach(duck,targetDuck);approach(glitchMix,targetGlitch);approach(drive,targetDrive);approach(motion,targetMotion);
         approach(diffusion,targetDiffusion);approach(diffusionSize,targetDiffusionSize);
         approach(shimmer,targetShimmer);approach(stereoOffset,targetStereoOffset);approach(duckHold,targetDuckHold);
+        approach(reverseMix,clamp(s.reverse,0.f,1.f));
+        reverseChunk+=(targetChunk-reverseChunk)*chunkGlide;
         const float blend=transition>0?1-static_cast<float>(transition)/fadeLength:1;
         const bool tape=s.character==Character::tape;
         tapeLoop+=(loop-tapeLoop)*tapeSmooth;
-        const double wobble=tape?motion*sampleRate*.0015*(wobbleWave(wobblePhase,s.wobbleShape)+.18*std::sin(2*pi*wobblePhase*28)):0;
+        const float slew=static_cast<float>(1-std::exp(-1/(sampleRate*.0035)));
+        wobbleValue+=(wobbleWave(wobblePhase,s.wobbleShape)-wobbleValue)*slew;
+        const double flutter=std::sin(2*pi*wobblePhase*5.5);
+        const double wobble=tape?motion*sampleRate*.0020*(.84*wobbleValue+.16*flutter):0;
+        const double revPhase=fraction(phase/std::max(1.e-6,rate(s.reverseRate)));
         const auto delayed=[&](int ch,double newer,double older,double gliding) {
             const auto& buffer=ring[static_cast<std::size_t>(ch)];
-            if(tape)return read(buffer,gliding+wobble);
-            const float a=read(buffer,newer);return transition>0?read(buffer,older)*(1-blend)+a*blend:a;
+            const auto pick=[&](double delay,bool modulated) {
+                const float fwd=modulated?readHermite(buffer,delay):read(buffer,delay);
+                if(reverseMix<1.e-5f) return fwd;
+                return fwd+(readReverse(buffer,delay,reverseChunk,revPhase,modulated)-fwd)*reverseMix;
+            };
+            if(tape) return pick(gliding+wobble,true);
+            const float a=pick(newer,false);return transition>0?pick(older,false)*(1.f-blend)+a*blend:a;
         };
         float fbL=delayed(0,previousLoop,oldLoop,tapeLoop),fbR=delayed(1,previousLoop,oldLoop,tapeLoop);
         if(shimmer>1.e-4f&&freezeMix<1) {
@@ -218,8 +261,7 @@ void DelayEngine::process(float* left,float* right,int frames,const Settings& s,
                 shaped[ch]=v;
             }
             l=shaped[0];r=shaped[1];
-            if(s.routing==Routing::pingPong) {if(j%2)std::swap(l,r);}
-            else if(s.routing==Routing::stereo){l*=1-std::max(0.f,pan[j]);r*=1+std::min(0.f,pan[j]);}
+            if(s.routing==Routing::stereo){l*=1-std::max(0.f,pan[j]);r*=1+std::min(0.f,pan[j]);}
             wetL+=l*gain[j];wetR+=r*gain[j];
         }
         const float mono=(dryL+dryR)*.5f;
@@ -235,12 +277,12 @@ void DelayEngine::process(float* left,float* right,int frames,const Settings& s,
                 if(s.character==Character::loFi) {
                     if(updateHold)held[ch]=std::round(v*256.f)/256.f;
                     v=held[ch];
-                } else {
-                    const float satDrive = 1.0f + drive * 4.0f;
-                    const float asym = (s.character == Character::tape) ? 0.08f * v * std::abs(v) : 0.0f;
-                    v = std::tanh((v + asym) * satDrive) / (1.0f + drive * 1.5f);
-                }
-                tone[ch]+=toneCoefficient*(v-tone[ch]);v=tone[ch];
+                } else v=saturate(v,drive,s.character==Character::tape);
+                const float fc=s.character==Character::bbd?(2400.f-drive*600.f):(s.character==Character::tape?(4600.f-drive*1600.f):3200.f);
+                const float coeff=static_cast<float>(1-std::exp(-2*pi*std::max(700.f,fc)/sampleRate));
+                tone[ch]+=coeff*(v-tone[ch]);v=tone[ch];
+                const float dc=static_cast<float>(1-std::exp(-2*pi*16.0/sampleRate));
+                toneHp[ch]+=dc*(v-toneHp[ch]);v-=toneHp[ch];
             } else if (std::abs(v) > 1.0f) {
                 const float sgn = v > 0.f ? 1.f : -1.f;
                 v = sgn * (1.0f + std::tanh(std::abs(v) - 1.0f));
@@ -294,14 +336,14 @@ void DelayEngine::process(float* left,float* right,int frames,const Settings& s,
         }
         if(duck>1.e-5f){
             const float releaseHoldScale=1.f+duckHold*3.f;
-            const float heldRelease=static_cast<float>(std::exp(-1/(beatSamples*rate(s.duckRate)*releaseHoldScale)));
+            const float heldRelease=static_cast<float>(std::exp(-1/(beatSamples*rate(s.duckRate)*releaseHoldScale*.28)));
             const float peak=std::max(std::abs(dryL),std::abs(dryR)),coeff=peak>envelope?attack:heldRelease;
             envelope=peak+(envelope-peak)*coeff;
             const double duckPhase=fraction(phase/rate(s.duckRate)+1.e-9);
             const double holdFrac=duckHold*.55;
             const double shapedPhase=duckPhase<=holdFrac?0.:(duckPhase-holdFrac)/std::max(1.e-4,1.-holdFrac);
             const float u=static_cast<float>(1.-shapedPhase);
-            lastDuck=s.inputDuck?std::exp(-duck*envelope*24):1-duck*(u*u*u);
+            lastDuck=s.inputDuck?std::exp(-duck*envelope*8.f):1-duck*(u*u*u);
         }else{
             lastDuck=1.f;
         }

@@ -6,7 +6,7 @@ enum Param { gridRate, routing, character, feedback, decay, highPass, hpSlope, l
 enum PerformanceParam { swing=baseCount+tapCount*4, groove, freeze, patternMorph, tapExtraStart };
 constexpr int tapExtraCount=8;
 constexpr int styleParamStart=tapExtraStart+tapCount*tapExtraCount;
-enum StyleParam { diffusion=styleParamStart, diffusionSize, wobbleRate, wobbleShape, shimmer, stereoOffset, duckHold, parameterCount };
+enum StyleParam { diffusion=styleParamStart, diffusionSize, wobbleRate, wobbleShape, shimmer, stereoOffset, duckHold, reverse, reverseRate, parameterCount };
 struct ParameterSpec { juce::String id,name; float min,max,initial,skew; juce::String choices,unit; };
 const std::array<ParameterSpec,parameterCount>& parameterSpecs();
 juce::AudioProcessorValueTreeState::ParameterLayout makeLayout();

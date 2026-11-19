@@ -82,7 +82,7 @@ DelayEditor::DelayEditor(DelayProcessor& p):AudioProcessorEditor(p),owner(p),gri
         sounds.addItem(programId++,name);
     }
     if(sounds.getNumItems()>0)preset.getRootMenu()->addSubMenu(family,sounds);
-    preset.setTextWhenNothingSelected("Custom sound");preset.setTooltip("Load a factory delay program across seven dance styles.");
+    preset.setTextWhenNothingSelected("Custom sound");preset.setTooltip("Load a factory delay. Programs are grouped by the kind of echo.");
     preset.setSelectedId(p.displayedProgram()+1,juce::dontSendNotification);
     preset.onChange=[this]{owner.setCurrentProgram(preset.getSelectedId()-1);pattern.setSelectedId(0,juce::dontSendNotification);};
     prevPreset.setComponentID("prevPreset");
@@ -157,9 +157,11 @@ void DelayEditor::makeControl(int i) {
         if(i==duckHold)tooltipClient->setTooltip("Holds and extends the ducking envelope so echoes stay tucked during fast phrases before blooming.");
         if(i==drive)tooltipClient->setTooltip("Saturation amount for Tape and BBD characters.");
         if(i==duckMode)tooltipClient->setTooltip("Beat: rhythmic wet ducking. Input: duck echoes while the incoming audio is loud. Rate sets recovery.");
-        if(i==routing)tooltipClient->setTooltip("Stereo uses tap pan. Ping Pong alternates taps and crossfeeds each phrase. Mono collapses the wet branch.");
-        if(i==glitch)tooltipClient->setTooltip("Wet effects only: rhythmic Gate, previous-slice Stutter, or Reverse. Off preserves the echoes.");
-        if(i>=baseCount&&i<swing&&(i-baseCount)%4==3)tooltipClient->setTooltip("Tap balance in Stereo routing. Ping Pong positions taps automatically; Mono is centered.");
+        if(i==routing)tooltipClient->setTooltip("Stereo uses tap pan. Ping Pong crossfeeds each repeat so echoes bounce left and right. Mono sums the wet signal.");
+        if(i==glitch)tooltipClient->setTooltip("Chops the wet signal after the delay: Gate, Stutter, or a backwards slice. Reverse length reverses the echoes themselves.");
+        if(i==reverse)tooltipClient->setTooltip("Plays each echo backwards in tempo-synced chunks, with click-free crossfades. Feedback and ping-pong stay active.");
+        if(i==reverseRate)tooltipClient->setTooltip("Length of each reversed chunk, as a host-tempo note division.");
+        if(i>=baseCount&&i<swing&&(i-baseCount)%4==3)tooltipClient->setTooltip("Tap balance in Stereo routing. Ping Pong bounces the whole repeat and ignores pan. Mono stays centered.");
     }
 }
 void DelayEditor::place(int id,juce::Rectangle<int> r,bool showLabel) {
@@ -199,6 +201,7 @@ void DelayEditor::resized() {
     place(mix,{916,688,87,119});place(width,{1007,688,77,119});place(output,{1090,688,77,119});
     place(diffusion,{46,1132,92,112});place(diffusionSize,{151,1132,92,112});
     place(shimmer,{256,1132,92,112});place(stereoOffset,{361,1132,92,112});place(duckHold,{466,1132,92,112});
+    place(reverse,{580,1132,92,112});place(reverseRate,{688,1168,156,36});
 }
 void DelayEditor::paint(juce::Graphics& g) {g.fillAll(theme::kBackground);}
 void DelayEditor::paintContent(juce::Graphics& g) {
@@ -245,7 +248,7 @@ void DelayEditor::paintContent(juce::Graphics& g) {
         g.fillRoundedRectangle(774, 621, 96.f * duckAtten, 4, 2);
     }
     panel(g,{905,596,275,250},"OUTPUT",theme::kAccentOut);
-    panel(g,{20,1090,1160,190},"ECHO DIFFUSION / SHIMMER / STEREO HAAS",theme::kAccentB);
+    panel(g,{20,1090,1160,190},"DIFFUSION / SHIMMER / REVERSE",theme::kAccentB);
     const float peak=juce::jlimit(0.f,1.f,owner.outputPeak.load());
     g.setColour(theme::kPanelEdge.withAlpha(.7f));g.fillRoundedRectangle(925,648,235,5,2);
     g.setColour(theme::kAccentA);g.fillRoundedRectangle(925,648,235*peak,5,2);
@@ -261,6 +264,7 @@ void DelayEditor::timerCallback() {
     controls[tempo]->setEnabled(!owner.hostSync.load());controls[motion]->setEnabled(s.character==Character::tape);
     controls[wobbleRate]->setEnabled(s.character==Character::tape);controls[wobbleShape]->setEnabled(s.character==Character::tape);
     controls[diffusionSize]->setEnabled(s.diffusion>0);
+    controls[static_cast<std::size_t>(reverseRate)]->setEnabled(s.reverse>.01f);
     controls[drive]->setEnabled(s.character==Character::tape||s.character==Character::bbd);
     grid.repaint();
     content.repaint(440, 24, 195, 32);

@@ -1,5 +1,6 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
+#include <algorithm>
 #include <cmath>
 #include <sstream>
 #include <locale>
@@ -65,7 +66,9 @@ double DelayProcessor::getTailLengthSeconds()const {
     const double diffusionCoefficient=diffusionStageFeedback*s.diffusion;
     const double diffusionRepeats=diffusionCoefficient>0?std::ceil(std::log(.0001)/std::log(diffusionCoefficient)):0;
     const double diffusionTail=s.diffusion>0?s.diffusionSize*.001*diffusionStageLengths.back()*diffusionRepeats:0;
-    return unit*(latest+last*repeats)+filterTail+diffusionTail;
+    const int reverseIndex=std::clamp(s.reverseRate,0,static_cast<int>(beatRates.size())-1);
+    const double reverseTail=s.reverse>0.01f?beatRates[static_cast<std::size_t>(reverseIndex)]*60/std::max(20.,displayedBpm.load()):0;
+    return unit*(latest+last*repeats)+filterTail+diffusionTail+reverseTail;
 }
 juce::AudioProcessorParameter* DelayProcessor::getBypassParameter()const{return parameters.getParameter("bypass");}
 juce::AudioProcessorEditor* DelayProcessor::createEditor(){return new DelayEditor(*this);}
@@ -101,83 +104,101 @@ struct Program {
 };
 constexpr int tapExtra(int tap,int field) {return tapExtraStart+(tap-1)*tapExtraCount+field;}
 const Program bank[]{
-    // Uplifting (16): tight, punchy rhythmic delays locked to trance grooves (zero reverb wash)
-    {"Uplifting / Dotted Drive",     2, 2, Routing::pingPong, Character::digital, 29, 32, 310, 11400, {{decay,38},{duck,46},{duckMode,1},{duckRate,7},{width,96}}},
-    {"Uplifting / Sixteen Bounce",   1, 2, Routing::pingPong, Character::digital, 34, 30, 340, 12200, {{decay,34},{duck,42},{duckMode,1},{duckRate,7},{swing,16}}},
-    {"Uplifting / Triplet Spark",    4, 6, Routing::stereo,   Character::digital, 31, 29, 360, 12800, {{decay,40},{duck,38},{duckMode,1},{stereoOffset,-2.5f},{width,96}}},
-    {"Uplifting / Neon Dotted",      0, 5, Routing::pingPong, Character::tape,    35, 31, 290,  9600, {{drive,28},{motion,14},{wobbleRate,.75f},{duck,44},{duckMode,1}}},
-    {"Uplifting / Answering Arc",    6, 2, Routing::pingPong, Character::digital, 27, 29, 340, 10800, {{decay,36},{duck,48},{duckMode,1},{tapExtra(6,1),2}}},
-    {"Uplifting / Trance Gate",      3, 2, Routing::pingPong, Character::digital, 32, 33, 380, 12400, {{glitch,1},{glitchRate,2},{glitchAmount,58},{duck,40},{duckMode,1}}},
-    {"Uplifting / Bar Throw",        0,14, Routing::stereo,   Character::digital, 20, 30, 350, 11200, {{decay,48},{duck,54},{duckMode,1},{duckHold,30}}},
-    {"Uplifting / Three Beat Hit",   0,13, Routing::pingPong, Character::digital, 22, 28, 340, 10800, {{decay,46},{duck,50},{duckMode,1},{stereoOffset,3.0f}}},
-    {"Uplifting / Pure 138 Dotted",  1,11, Routing::stereo,   Character::digital, 32, 31, 320, 11800, {{decay,38},{duck,50},{duckMode,1},{width,98}}},
-    {"Uplifting / Arp Stepper",      7, 2, Routing::pingPong, Character::digital, 26, 30, 410, 12600, {{decay,42},{swing,12},{duck,36},{duckMode,1},{tapExtra(4,2),1},{tapExtra(4,3),900}}},
-    {"Uplifting / Six Beat Throw",   0,15, Routing::stereo,   Character::tape,    18, 28, 360,  9800, {{decay,52},{drive,24},{duck,56},{duckMode,1},{duckHold,35}}},
-    {"Uplifting / Starlight Answer", 0, 8, Routing::pingPong, Character::digital, 28, 30, 330, 11600, {{decay,42},{duck,44},{duckMode,1},{stereoOffset,4.0f}}},
-    {"Uplifting / Skyward Pluck",    4, 4, Routing::pingPong, Character::bbd,     30, 29, 270,  8200, {{drive,26},{decay,36},{duck,38},{duckHold,26}}},
-    {"Uplifting / Prism Row",        7, 0, Routing::stereo,   Character::digital, 24, 31, 460, 12600, {{decay,44},{tapExtra(5,1),1},{tapExtra(7,1),1}}},
-    {"Uplifting / Triplet Phrase",   0,12, Routing::pingPong, Character::digital, 24, 28, 340, 11000, {{decay,44},{duck,46},{duckMode,1},{duckHold,24}}},
-    {"Uplifting / Backbeat Throw",   0, 9, Routing::pingPong, Character::tape,    26, 29, 320, 10200, {{drive,24},{decay,42},{duck,48},{duckMode,1},{duckHold,28}}},
+    // Slapback: one short tempo-synced repeat.
+    {"Slapback / Thirty Second",   0, 0, Routing::mono,     Character::tape,    10, 28, 160,  6200, {{duck,0},{drive,22},{motion,8},{wobbleRate,.55f},{lpSlope,2}}},
+    {"Slapback / Sixteenth",       0, 2, Routing::mono,     Character::bbd,     12, 30, 180,  5400, {{duck,0},{drive,30},{lpSlope,2}}},
+    {"Slapback / Triplet",         0, 1, Routing::stereo,   Character::tape,    14, 26, 170,  6400, {{duck,0},{drive,20},{motion,10},{stereoOffset,4.f},{lpSlope,2}}},
+    {"Slapback / Dotted 32nd",     0,10, Routing::mono,     Character::digital,  8, 32, 200,  8000, {{duck,0},{lpSlope,2},{hpSlope,2}}},
+    {"Slapback / Tape Double",     0, 2, Routing::stereo,   Character::tape,    18, 24, 140,  4800, {{duck,0},{drive,38},{motion,16},{wobbleRate,.7f},{lpSlope,2}}},
+    {"Slapback / Snare",           0, 0, Routing::mono,     Character::bbd,      6, 34, 280,  7200, {{duck,0},{drive,42},{lpSlope,2},{hpSlope,2}}},
 
-    // Rolling (8): pocket 16ths, triplet shuffles, muted bassline-safe skips
-    {"Rolling / Offbeat Snap",       5, 2, Routing::pingPong, Character::digital, 24, 30, 360,  9400, {{groove,1},{duck,52},{duckRate,4},{duckHold,42},{stereoOffset,3.0f}}},
-    {"Rolling / Pocket Skip",       10, 1, Routing::stereo,   Character::tape,    22, 28, 380,  7800, {{groove,2},{motion,10},{tapExtra(3,0),68},{tapExtra(5,1),1}}},
-    {"Rolling / Bassline Tuck",      8, 7, Routing::mono,     Character::bbd,     20, 26, 260,  4600, {{drive,48},{decay,42},{duck,66},{duckMode,1},{duckHold,52}}},
-    {"Rolling / Three Chairs",       4, 4, Routing::pingPong, Character::bbd,     26, 28, 280,  6400, {{decay,38},{duck,36},{drive,32}}},
-    {"Rolling / Shuffle Bar",        7, 2, Routing::stereo,   Character::digital, 24, 30, 350,  8600, {{groove,1},{decay,42},{tapExtra(6,1),1},{tapExtra(8,0),65}}},
-    {"Rolling / Dotted Pocket",      1,11, Routing::stereo,   Character::tape,    27, 29, 310,  7600, {{swing,36},{drive,30},{motion,14},{tapExtra(2,1),1}}},
-    {"Rolling / Triplet Drive",      3, 3, Routing::stereo,   Character::digital, 25, 31, 410, 10200, {{groove,1},{decay,36},{duck,42},{duckRate,3},{stereoOffset,-4.f}}},
-    {"Rolling / Back Door",          3, 2, Routing::stereo,   Character::bbd,     23, 27, 250,  5600, {{groove,1},{drive,36},{decay,40},{duck,28},{tapExtra(2,0),78}}},
+    // Quarter-note echoes.
+    {"Quarter / Straight",         0, 7, Routing::stereo,   Character::digital, 36, 32, 140, 12000, {{duck,0},{lpSlope,2}}},
+    {"Quarter / Analog",           0, 7, Routing::mono,     Character::bbd,     40, 30, 120,  4000, {{duck,0},{drive,38},{lpSlope,3}}},
+    {"Quarter / Wide",             0, 7, Routing::stereo,   Character::digital, 32, 30, 180, 11000, {{duck,0},{stereoOffset,11.f},{lpSlope,2}}},
+    {"Quarter / Throw",            0, 7, Routing::stereo,   Character::tape,    55, 28, 160,  4600, {{duck,0},{drive,32},{motion,16},{wobbleRate,.4f},{lpSlope,3}}},
+    {"Quarter / Soft",             0, 7, Routing::stereo,   Character::tape,    26, 24, 200,  6800, {{duck,0},{drive,14},{motion,8},{wobbleRate,.3f},{lpSlope,2}}},
+    {"Quarter / Band",             0, 7, Routing::stereo,   Character::digital, 34, 30, 420,  5200, {{duck,0},{hpSlope,3},{lpSlope,3}}},
 
-    // Progressive (8): tight syncopated dotted grooves & sculpted analog taps
-    {"Progressive / Dotted Groove",  0, 5, Routing::pingPong, Character::tape,    32, 29, 260,  7200, {{drive,28},{motion,16},{wobbleRate,.35f},{decay,42},{duck,42},{duckMode,1}}},
-    {"Progressive / Half Step",      8, 9, Routing::stereo,   Character::tape,    24, 28, 280,  5800, {{drive,30},{motion,14},{wobbleShape,1},{decay,48},{duck,44}}},
-    {"Progressive / Dotted Pair",    2, 2, Routing::pingPong, Character::bbd,     30, 30, 260,  6800, {{drive,32},{decay,40},{stereoOffset,-4.5f},{duck,38},{duckMode,1}}},
-    {"Progressive / Cross Pocket",   5, 2, Routing::stereo,   Character::tape,    28, 29, 240,  5400, {{drive,36},{motion,18},{swing,24},{decay,42},{tapExtra(3,2),1},{tapExtra(3,4),3200}}},
-    {"Progressive / Eight Steps",    7, 4, Routing::stereo,   Character::bbd,     25, 28, 270,  6200, {{drive,30},{decay,44},{tapExtra(6,2),1},{tapExtra(6,4),3500},{duck,34}}},
-    {"Progressive / Velvet Pluck",   2, 4, Routing::pingPong, Character::bbd,     28, 29, 240,  6900, {{drive,28},{stereoOffset,-4.5f},{decay,38},{duck,36},{duckHold,24}}},
-    {"Progressive / Triplet Pocket", 4, 6, Routing::stereo,   Character::digital, 26, 30, 390,  9400, {{decay,40},{duck,38},{tapExtra(3,1),1},{tapExtra(5,2),1},{tapExtra(5,4),4200}}},
-    {"Progressive / Dotted Answer",  1, 8, Routing::pingPong, Character::tape,    24, 28, 270,  6400, {{drive,28},{motion,12},{wobbleRate,.42f},{decay,46},{duck,42}}},
+    // Dotted grid: the push against the beat.
+    {"Dotted / Eighth",            0, 5, Routing::stereo,   Character::digital, 36, 32, 180, 11000, {{duck,0},{lpSlope,2}}},
+    {"Dotted / Eighth Tape",       0, 5, Routing::stereo,   Character::tape,    40, 30, 160,  5000, {{duck,0},{drive,28},{motion,18},{wobbleRate,.42f},{lpSlope,3}}},
+    {"Dotted / Quarter",           0, 8, Routing::stereo,   Character::digital, 34, 30, 150, 10000, {{duck,0},{lpSlope,2}}},
+    {"Dotted / Sixteenth",         0,11, Routing::stereo,   Character::digital, 22, 28, 220, 12000, {{duck,0},{lpSlope,2}}},
+    {"Dotted / Dub Eighth",        0, 5, Routing::stereo,   Character::tape,    62, 26, 210,  3000, {{duck,0},{drive,44},{motion,22},{wobbleRate,.33f},{lpSlope,3}}},
+    {"Dotted / Bright",            0, 5, Routing::stereo,   Character::digital, 30, 30, 380, 14000, {{duck,0},{hpSlope,2},{lpSlope,1}}},
 
-    // Psy (8): razor-sharp triplet patterns, gated chops & ratchet stabs
-    {"Psy / Triplet Pulse",          4, 3, Routing::pingPong, Character::digital, 31, 33, 450, 11400, {{glitch,1},{glitchRate,3},{glitchAmount,48},{decay,36},{stereoOffset,4.0f}}},
-    {"Psy / Cyber Ratchet",          5, 2, Routing::pingPong, Character::bbd,     29, 34, 510,  9200, {{glitch,1},{glitchRate,2},{glitchAmount,62},{tapExtra(1,1),4},{tapExtra(2,1),3}}},
-    {"Psy / Fold Back",              6, 7, Routing::pingPong, Character::digital, 25, 32, 340,  9600, {{glitch,3},{glitchRate,2},{glitchAmount,52},{decay,42}}},
-    {"Psy / Triplet Fill",           9, 1, Routing::stereo,   Character::digital, 28, 33, 430, 11600, {{glitch,2},{glitchRate,1},{glitchAmount,54},{decay,38},{tapExtra(1,1),2}}},
-    {"Psy / Buffer Flip",           11, 2, Routing::stereo,   Character::digital, 30, 32, 360, 10400, {{glitch,3},{glitchRate,2},{glitchAmount,58},{stereoOffset,7.5f},{decay,40}}},
-    {"Psy / Laser Comb",             7, 0, Routing::pingPong, Character::digital, 42, 33, 520, 13400, {{decay,46},{width,96},{tapExtra(2,1),2},{tapExtra(5,1),2}}},
-    {"Psy / Acid Return",            9, 2, Routing::stereo,   Character::bbd,     30, 31, 380,  8200, {{drive,52},{glitch,2},{glitchRate,0},{glitchAmount,38},{decay,36}}},
-    {"Psy / Spiral Matrix",          4, 1, Routing::pingPong, Character::tape,    32, 32, 340, 10200, {{patternMorph,40},{motion,22},{wobbleRate,2.4f},{tapExtra(4,7),10},{decay,38}}},
+    // Triplet grid.
+    {"Triplet / Eighth",           0, 3, Routing::stereo,   Character::digital, 34, 32, 200, 11000, {{duck,0},{lpSlope,2}}},
+    {"Triplet / Quarter",          0, 6, Routing::stereo,   Character::digital, 38, 30, 180, 10000, {{duck,0},{lpSlope,2}}},
+    {"Triplet / Sixteenth",        0, 1, Routing::stereo,   Character::digital, 26, 28, 280, 12000, {{duck,0},{lpSlope,2}}},
+    {"Triplet / Half",             0,12, Routing::stereo,   Character::tape,    42, 28, 160,  5800, {{duck,0},{drive,24},{motion,12},{wobbleRate,.28f},{lpSlope,2}}},
+    {"Triplet / Roll",             0, 3, Routing::stereo,   Character::bbd,     30, 30, 180,  4600, {{duck,0},{drive,34},{lpSlope,3}}},
+    {"Triplet / Open",             0, 6, Routing::stereo,   Character::digital, 28, 26, 120, 13000, {{duck,0},{lpSlope,1},{stereoOffset,-6.f}}},
 
-    // Tech (8): dry slamming club grooves, stutter chops & mechanical micro-delays
-    {"Tech / Shutter",               7, 0, Routing::stereo,   Character::digital, 22, 34, 620, 11600, {{glitch,1},{glitchRate,0},{glitchAmount,78},{decay,38},{duck,24}}},
-    {"Tech / Cork Heel",             0, 1, Routing::mono,     Character::tape,    18, 24, 220,  4800, {{drive,48},{motion,8},{decay,40},{duck,22}}},
-    {"Tech / Ghost Step",            9,10, Routing::stereo,   Character::loFi,    21, 30, 420,  6400, {{swing,34},{glitch,2},{glitchRate,0},{glitchAmount,34},{tapExtra(4,0),60}}},
-    {"Tech / Slice Index",           9, 2, Routing::stereo,   Character::loFi,    28, 36, 410,  8600, {{glitch,2},{glitchRate,2},{glitchAmount,66},{tapExtra(6,1),2},{decay,36}}},
-    {"Tech / Carbon Copy",           1, 2, Routing::mono,     Character::loFi,    30, 32, 340,  5600, {{glitch,1},{glitchRate,2},{glitchAmount,50},{tapExtra(3,1),2},{decay,40}}},
-    {"Tech / Dotted Micro",          8,10, Routing::pingPong, Character::loFi,    26, 33, 460,  7800, {{glitch,2},{glitchRate,0},{glitchAmount,62},{wobbleShape,4},{motion,24}}},
-    {"Tech / Torn Splice",          11, 2, Routing::stereo,   Character::tape,    25, 32, 360,  6800, {{glitch,2},{glitchRate,1},{glitchAmount,48},{motion,28},{wobbleShape,4}}},
-    {"Tech / Warehouse Slap",        0, 2, Routing::stereo,   Character::bbd,     22, 28, 280,  6200, {{drive,42},{decay,46},{duck,36},{tapExtra(1,6),65}}},
+    // Ping-pong: one tap, crossfed repeats, no diffusion. Echoes alternate left and right.
+    {"Ping-Pong / Eighth",         0, 4, Routing::pingPong, Character::digital, 40, 34, 250, 11000, {{duck,0},{lpSlope,2},{width,100}}},
+    {"Ping-Pong / Dotted Eighth",  0, 5, Routing::pingPong, Character::digital, 38, 34, 240, 10500, {{duck,0},{lpSlope,2},{width,100}}},
+    {"Ping-Pong / Quarter",        0, 7, Routing::pingPong, Character::digital, 42, 32, 200, 10000, {{duck,0},{lpSlope,2},{width,100}}},
+    {"Ping-Pong / Quarter Triplet",0, 6, Routing::pingPong, Character::digital, 40, 32, 220, 10000, {{duck,0},{lpSlope,2},{width,100}}},
+    {"Ping-Pong / Sixteenth",      0, 2, Routing::pingPong, Character::digital, 28, 30, 300, 12000, {{duck,0},{lpSlope,2},{width,100}}},
+    {"Ping-Pong / Half",           0, 9, Routing::pingPong, Character::tape,    45, 30, 180,  5200, {{duck,0},{drive,18},{motion,10},{wobbleRate,.35f},{lpSlope,2},{width,100}}},
 
-    // Bass & Breaks (8): synced chopper rhythms, breakbeat relays, tight high-passed punch
-    {"Bass & Breaks / Amen Chopper", 7, 1, Routing::stereo,   Character::digital, 25, 31, 560, 11200, {{glitch,2},{glitchRate,2},{glitchAmount,46},{duck,42},{duckHold,38}}},
-    {"Bass & Breaks / Jungle Rattler",10,3,Routing::pingPong, Character::loFi,    28, 30, 500,  8400, {{glitch,1},{glitchRate,1},{glitchAmount,36},{tapExtra(1,1),3},{tapExtra(3,1),2}}},
-    {"Bass & Breaks / Neuro Scatter",6, 0, Routing::pingPong, Character::digital, 24, 30, 680, 12800, {{groove,2},{glitch,3},{glitchRate,3},{glitchAmount,40},{stereoOffset,-5.f}}},
-    {"Bass & Breaks / Sidecut",      9, 2, Routing::stereo,   Character::digital, 20, 29, 660,  9800, {{duck,50},{duckMode,1},{decay,42},{tapExtra(4,1),2}}},
-    {"Bass & Breaks / Snare Relay",  4, 3, Routing::pingPong, Character::digital, 26, 29, 520, 10500, {{glitch,1},{glitchRate,1},{glitchAmount,30},{tapExtra(2,1),1}}},
-    {"Bass & Breaks / Brake Roll",  11, 2, Routing::stereo,   Character::loFi,    19, 32, 480,  7600, {{glitch,2},{glitchAmount,38},{glitchRate,1},{tapExtra(7,1),2}}},
-    {"Bass & Breaks / Switch Hit",  10, 6, Routing::pingPong, Character::tape,    24, 30, 440,  7900, {{wobbleRate,1.8f},{motion,16},{tapExtra(4,7),6},{patternMorph,28}}},
-    {"Bass & Breaks / Crosscut",     5,10, Routing::stereo,   Character::bbd,     27, 34, 510,  8300, {{glitch,1},{glitchRate,3},{glitchAmount,58},{drive,44},{tapExtra(5,0),80}}},
+    // Tape and dub: dark feedback, saturation, slow wow.
+    {"Tape Dub / Quarter",         0, 7, Routing::stereo,   Character::tape,    60, 30, 180,  2800, {{duck,0},{drive,42},{motion,24},{wobbleRate,.38f},{lpSlope,3}}},
+    {"Tape Dub / Dotted",          0, 5, Routing::stereo,   Character::tape,    66, 28, 220,  2400, {{duck,0},{drive,48},{motion,28},{wobbleRate,.32f},{lpSlope,3}}},
+    {"Tape Dub / Half",            0, 9, Routing::stereo,   Character::tape,    58, 26, 160,  3000, {{duck,0},{drive,36},{motion,20},{wobbleRate,.25f},{lpSlope,3}}},
+    {"Tape Dub / Flutter",         0, 4, Routing::stereo,   Character::tape,    52, 28, 200,  3600, {{duck,0},{drive,30},{motion,48},{wobbleRate,1.1f},{wobbleShape,1},{lpSlope,3}}},
+    {"Tape Dub / Dark Loop",       0, 8, Routing::stereo,   Character::tape,    70, 24, 250,  1700, {{duck,0},{drive,55},{motion,16},{wobbleRate,.22f},{lpSlope,4},{hpSlope,2}}},
+    {"Tape Dub / Chord",           0,13, Routing::stereo,   Character::tape,    48, 28, 140,  3200, {{duck,0},{drive,34},{motion,16},{wobbleRate,.3f},{lpSlope,3}}},
 
-    // Classic (8): tight tape heads, crisp BBD slapbacks & dub chord bounces
-    {"Classic / Tape Head Bounce",   8, 4, Routing::stereo,   Character::tape,    34, 30, 210,  4600, {{drive,46},{motion,18},{decay,42},{duck,26}}},
-    {"Classic / Dub Chord Hit",      0, 5, Routing::pingPong, Character::tape,    38, 32, 190,  4100, {{drive,54},{motion,22},{wobbleRate,.45f},{decay,44},{duck,38},{duckMode,1}}},
-    {"Classic / Bucket Slap",        0, 7, Routing::mono,     Character::bbd,     30, 28, 170,  3400, {{drive,52},{lpSlope,3},{decay,48},{duck,28}}},
-    {"Classic / Dotted Gold",        4,11, Routing::stereo,   Character::bbd,     32, 30, 240,  5200, {{drive,44},{tapExtra(3,2),1},{tapExtra(3,4),2800},{tapExtra(5,5),1}}},
-    {"Classic / Smoked Tape",        9, 4, Routing::stereo,   Character::tape,    33, 30, 220,  4400, {{drive,52},{motion,24},{wobbleShape,3},{stereoOffset,-4.5f},{decay,42}}},
-    {"Classic / Hardware Slapback",  0,10, Routing::stereo,   Character::bbd,     18, 26, 360,  6800, {{drive,32},{decay,50},{tapExtra(1,5),2}}},
-    {"Classic / Studio Sixteenth",   2, 2, Routing::stereo,   Character::tape,    28, 29, 310,  8600, {{drive,34},{motion,16},{wobbleRate,.72f},{patternMorph,12},{tapExtra(3,7),7}}},
-    {"Classic / Eighth Stepper",     1, 4, Routing::pingPong, Character::digital, 29, 30, 290,  7200, {{decay,44},{duck,32},{duckMode,1},{stereoOffset,3.5f}}}
+    // Filtering inside the feedback loop is the sound.
+    {"Filtered / Telephone",       0, 4, Routing::stereo,   Character::digital, 42, 32, 850,  2300, {{duck,0},{hpSlope,3},{lpSlope,3}}},
+    {"Filtered / Darkening",       0, 7, Routing::stereo,   Character::digital, 55, 30,  80,  3400, {{duck,0},{hpSlope,1},{lpSlope,4}}},
+    {"Filtered / Highpass",        0, 5, Routing::stereo,   Character::digital, 36, 30, 720, 16000, {{duck,0},{hpSlope,4},{lpSlope,0}}},
+    {"Filtered / Band",            0, 3, Routing::stereo,   Character::digital, 40, 30, 500,  3100, {{duck,0},{hpSlope,3},{lpSlope,3}}},
+    {"Filtered / Lo-fi",           0, 2, Routing::stereo,   Character::loFi,    34, 28, 300,  4200, {{duck,0},{hpSlope,2},{lpSlope,2}}},
+    {"Filtered / Thin Triplet",    0, 6, Routing::stereo,   Character::digital, 32, 28, 1200, 6000, {{duck,0},{hpSlope,3},{lpSlope,3}}},
+
+    // Echoes tucked under the dry hit, then blooming in the gap.
+    {"Ducked / Quarter",           0, 7, Routing::stereo,   Character::digital, 40, 36, 180, 10000, {{duck,55},{duckMode,1},{duckRate,7},{lpSlope,2}}},
+    {"Ducked / Eighth",            0, 4, Routing::stereo,   Character::digital, 34, 34, 200, 11000, {{duck,60},{duckMode,1},{duckRate,4},{lpSlope,2}}},
+    {"Ducked / Dotted",            0, 5, Routing::stereo,   Character::tape,    38, 32, 180,  7000, {{duck,50},{duckMode,1},{duckRate,5},{drive,18},{motion,10},{lpSlope,2}}},
+    {"Ducked / Beat",              0, 7, Routing::stereo,   Character::digital, 36, 34, 160, 10000, {{duck,70},{duckMode,0},{duckRate,7},{duckHold,28},{lpSlope,2}}},
+    {"Ducked / Piano",             0, 7, Routing::stereo,   Character::digital, 32, 30, 220,  9000, {{duck,48},{duckMode,1},{duckRate,7},{lpSlope,2}}},
+    {"Ducked / Triplet",           0, 3, Routing::stereo,   Character::digital, 34, 32, 200, 10000, {{duck,52},{duckMode,1},{duckRate,3},{lpSlope,2}}},
+
+    // Several taps, low feedback, so the rhythm reads as a pattern.
+    {"Multi-Tap / Dotted Pair",    2, 2, Routing::stereo,   Character::digital, 16, 34, 180, 11000, {{duck,0},{decay,30},{lpSlope,2}}},
+    {"Multi-Tap / Three Over Two", 4, 4, Routing::stereo,   Character::digital, 18, 32, 160, 10000, {{duck,0},{decay,28},{groove,1},{lpSlope,2}}},
+    {"Multi-Tap / Crossfade",      5, 4, Routing::stereo,   Character::digital, 14, 34, 200, 11000, {{duck,0},{decay,22},{lpSlope,2}}},
+    {"Multi-Tap / End Roll",      11, 2, Routing::stereo,   Character::digital, 12, 36, 250, 12000, {{duck,0},{decay,18},{lpSlope,2}}},
+    {"Multi-Tap / Dub Holes",      8, 4, Routing::stereo,   Character::tape,    22, 30, 160,  4200, {{duck,0},{decay,34},{drive,28},{motion,12},{lpSlope,3}}},
+    {"Multi-Tap / Lanterns",       7, 2, Routing::stereo,   Character::digital, 14, 32, 200, 10000, {{duck,0},{decay,26},{lpSlope,2}}},
+
+    // Long, diffused, sometimes shimmered. This is the wash, on purpose.
+    {"Ambient / Wash",             0, 9, Routing::stereo,   Character::digital, 48, 32, 200,  8000, {{duck,0},{diffusion,62},{diffusionSize,16},{shimmer,12},{lpSlope,2}}},
+    {"Ambient / Shimmer",          0,14, Routing::stereo,   Character::digital, 55, 28, 250, 10000, {{duck,0},{diffusion,42},{diffusionSize,18},{shimmer,48},{lpSlope,2}}},
+    {"Ambient / Bloom",            0, 8, Routing::stereo,   Character::tape,    42, 30, 180,  6000, {{duck,0},{diffusion,72},{diffusionSize,22},{drive,14},{motion,12},{lpSlope,2}}},
+    {"Ambient / Cloud",            0,13, Routing::stereo,   Character::digital, 50, 28, 300,  7000, {{duck,0},{diffusion,68},{diffusionSize,24},{shimmer,22},{lpSlope,2}}},
+    {"Ambient / Modulated",        0, 9, Routing::stereo,   Character::tape,    46, 28, 160,  4800, {{duck,0},{diffusion,38},{diffusionSize,14},{motion,36},{wobbleRate,.24f},{drive,20},{lpSlope,3}}},
+    {"Ambient / Long",             0,15, Routing::stereo,   Character::digital, 40, 26, 150,  7800, {{duck,0},{diffusion,58},{diffusionSize,20},{shimmer,18},{lpSlope,2}}},
+
+    // Reversed echoes. Chunk length follows the host grid.
+    {"Reverse / Quarter",          0, 7, Routing::stereo,   Character::digital, 26, 36, 180, 10000, {{duck,0},{reverse,100},{reverseRate,7},{lpSlope,2}}},
+    {"Reverse / Half",             0, 9, Routing::stereo,   Character::digital, 30, 34, 160,  9000, {{duck,0},{reverse,100},{reverseRate,9},{lpSlope,2}}},
+    {"Reverse / Dotted",           0, 5, Routing::stereo,   Character::digital, 24, 34, 200, 10000, {{duck,0},{reverse,100},{reverseRate,5},{lpSlope,2}}},
+    {"Reverse / Ping Pong",        0, 7, Routing::pingPong, Character::digital, 32, 34, 200, 10000, {{duck,0},{reverse,100},{reverseRate,7},{lpSlope,2},{width,100}}},
+    {"Reverse / Eighth",           0, 4, Routing::stereo,   Character::digital, 20, 32, 220, 11000, {{duck,0},{reverse,100},{reverseRate,4},{lpSlope,2}}},
+    {"Reverse / Swell",            0,14, Routing::stereo,   Character::tape,    28, 30, 150,  7000, {{duck,0},{reverse,100},{reverseRate,14},{drive,14},{motion,8},{lpSlope,2}}},
+
+    // Dance piano: house and trance chords and stabs. All divisions are tempo-synced.
+    {"Piano / Slap",               0, 0, Routing::mono,     Character::tape,    12, 26, 170,  7000, {{duck,0},{drive,18},{motion,6},{lpSlope,2}}},
+    {"Piano / Slap Sixteen",       0, 2, Routing::stereo,   Character::bbd,     14, 24, 190,  6400, {{duck,0},{drive,26},{stereoOffset,7.f},{lpSlope,2}}},
+    {"Piano / Quarter Stab",       0, 7, Routing::stereo,   Character::digital, 28, 30, 210, 11000, {{duck,32},{duckMode,1},{duckRate,7},{lpSlope,2}}},
+    {"Piano / Quarter Chords",     0, 7, Routing::stereo,   Character::tape,    34, 26, 160,  8200, {{duck,0},{drive,16},{motion,8},{wobbleRate,.36f},{lpSlope,2}}},
+    {"Piano / Dotted Eighth",      0, 5, Routing::stereo,   Character::digital, 36, 28, 230, 10000, {{duck,18},{duckMode,1},{duckRate,5},{lpSlope,2}}},
+    {"Piano / Reverse Swell",      0, 9, Routing::stereo,   Character::digital, 22, 30, 180,  9000, {{duck,0},{reverse,100},{reverseRate,9},{lpSlope,2}}},
 };
 }
 
@@ -219,7 +240,7 @@ void DelayProcessor::setCurrentProgram(int index) {
     resetPending.store(true);
 }
 void DelayProcessor::getStateInformation(juce::MemoryBlock& block) {
-    auto state=parameters.copyState();state.setProperty("program",program.load(),nullptr);state.setProperty("programBank",oldBank.load()?0:2,nullptr);
+    auto state=parameters.copyState();state.setProperty("program",program.load(),nullptr);state.setProperty("programBank",oldBank.load()?0:3,nullptr);
     if(auto xml=state.createXml())copyXmlToBinary(*xml,block);
 }
 void DelayProcessor::setStateInformation(const void* data,int size) {
@@ -240,7 +261,7 @@ void DelayProcessor::setStateInformation(const void* data,int size) {
                 juce::ValueTree child("PARAM");child.setProperty("id",spec.id,nullptr);child.setProperty("value",spec.initial,nullptr);state.appendChild(child,nullptr);
             } else if(matches!=1)return;
         }
-        parameters.replaceState(state);oldBank.store(static_cast<int>(state.getProperty("programBank",0))!=2);program.store(juce::jlimit(0,getNumPrograms()-1,static_cast<int>(state.getProperty("program",0))));resetPending.store(true);
+        parameters.replaceState(state);oldBank.store(static_cast<int>(state.getProperty("programBank",0))!=3);program.store(juce::jlimit(0,getNumPrograms()-1,static_cast<int>(state.getProperty("program",0))));resetPending.store(true);
     }
 }
 }

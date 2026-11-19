@@ -7,8 +7,8 @@ constexpr std::array<double, 16> beatRates{
     .125, 1.0/6, .25, 1.0/3, .5, .75, 2.0/3, 1, 1.5, 2,
     .1875, .375, 4.0/3, 3, 4, 6
 };
-constexpr float diffusionStageFeedback=.72f;
-constexpr std::array<double,4> diffusionStageLengths{.67,.83,1.09,1.37};
+constexpr float diffusionStageFeedback=.62f;
+constexpr std::array<double,4> diffusionStageLengths{.61,.89,1.17,1.53};
 enum class Routing { stereo, pingPong, mono };
 enum class Character { digital, tape, bbd, loFi };
 enum class Glitch { off, gate, stutter, reverse };
@@ -24,7 +24,8 @@ struct Settings {
     float feedback = .35f, decay = .3f, highPass = 120, lowPass = 9000;
     int hpSlope = 2, lpSlope = 2;
     float drive = .25f, motion = .2f, wobbleRate = .5f, diffusion = 0, diffusionSize = 12, duck = 0;
-    float shimmer = 0, stereoOffset = 0, duckHold = 0;
+    float shimmer = 0, stereoOffset = 0, duckHold = 0, reverse = 0;
+    int reverseRate = 7;
     WobbleShape wobbleShape = WobbleShape::sine;
     bool inputDuck = false;
     int duckRate = 7, glitchRate = 2;
@@ -51,15 +52,17 @@ private:
         void clear();
     };
     float read(const std::vector<float>&, double delay) const;
+    float readHermite(const std::vector<float>&, double delay) const;
+    float readReverse(const std::vector<float>&, double base, double chunk, double phase, bool hermite) const;
     double sampleRate=48000, phase=0, previousLoop=0, tapeLoop=0, oldLoop=0;
     std::array<std::vector<float>,2> ring, wetHistory;
     std::array<std::array<std::vector<float>,diffusionStageLengths.size()>,2> diffusionHistory;
     std::array<Filter,2> hp,lp;
     std::array<std::array<Filter,2>,tapCount> tapHp,tapLp;
     std::array<std::array<float,2>,tapCount> tapTone{};
-    float freezeMix=0, diffusion=0, diffusionSize=12, shimmer=0, stereoOffset=0, duckHold=0;
-    double frozenLoop=1,wobblePhase=0,shimmerPhase=0;bool wasFrozen=false;
-    std::array<float,2> tone{}, held{};
+    float freezeMix=0, diffusion=0, diffusionSize=12, shimmer=0, stereoOffset=0, duckHold=0, reverseMix=0, wobbleValue=0;
+    double frozenLoop=1,wobblePhase=0,shimmerPhase=0,reverseChunk=1;bool wasFrozen=false;
+    std::array<float,2> tone{}, toneHp{}, held{};
     std::array<double,tapCount> delay{}, oldDelay{}, tapeDelay{};
     std::array<float,tapCount> gain{},pan{};
     std::size_t write=0, wetWrite=0, diffusionWrite=0, capture=0, valid=0, wetValid=0;
