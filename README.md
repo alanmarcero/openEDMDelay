@@ -4,6 +4,10 @@ Build beat-synced echoes from eight taps. Use it for rhythmic repeats, stereo mo
 
 [Download the latest release](https://github.com/alanmarcero/openEDMDelay/releases/latest) · [OpenVST Manager](https://github.com/alanmarcero/alan-m-OpenVSTManager/releases/latest)
 
+## Beta
+
+All of these plugins are in beta. The macOS and Linux builds are not up to date, so the Windows build is the one to use for now. A plugin can change dramatically from one release to the next, but the goal is for each one to keep getting better.
+
 ![openEDMDelay editor](docs/screenshots/preview.png)
 
 ## Choose an echo
