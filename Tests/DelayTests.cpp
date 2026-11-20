@@ -1,6 +1,7 @@
 #include "DelayEngine.h"
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <iostream>
 #include <stdexcept>
 #include <vector>
@@ -21,7 +22,7 @@ void timing() {
     for(double sr:{8000.,44100.,48000.,96000.}) for(double bpm:{60.,120.,180.}) {
         const int at=static_cast<int>(std::round(sr*60/bpm)); Render x(sr,at+4);auto s=clean();x.l[0]=1;x.run(s,bpm);
         const double exact=sr*60/bpm; double sum=0,centre=0;
-        for(int j=at-1;j<=at+1;++j){sum+=x.l[static_cast<std::size_t>(j)];centre+=j*x.l[static_cast<std::size_t>(j)];}
+        for(int j=std::max(1,at-2);j<=at+2;++j){sum+=x.l[static_cast<std::size_t>(j)];centre+=j*x.l[static_cast<std::size_t>(j)];}
         check(std::abs(sum-1)<.0001 && std::abs(centre/sum-exact)<.001,"Quarter-note impulse misses beat");
         check(x.l[0]==0,"Wet-only leaks dry");
     }
@@ -60,7 +61,10 @@ void dryAndReset() {
     s=clean();x.engine.reset();std::fill(x.l.begin(),x.l.end(),0);std::fill(x.r.begin(),x.r.end(),0);x.run(s);
     check(std::all_of(x.l.begin(),x.l.end(),[](float v){return v==0;}),"Reset leaves stale tail");
 }
-double energy(const std::vector<float>& x,int begin=0) {double e=0;for(std::size_t i=static_cast<std::size_t>(begin);i<x.size();++i)e+=x[i]*x[i];return e;}
+double energy(const std::vector<float>& x,int begin=0,int end=-1) {
+    const std::size_t stop=end<0?x.size():std::min(x.size(),static_cast<std::size_t>(end));
+    double e=0;for(std::size_t i=static_cast<std::size_t>(begin);i<stop;++i)e+=x[i]*x[i];return e;
+}
 void filters() {
     auto s=clean();s.rate=0;
     auto measure=[&](int slope,bool high) {
@@ -302,9 +306,174 @@ void sidechainDuck() {
     DelayEngine without;without.prepare(8000);without.process(l.data(),r.data(),n,ignored,{120,0,true});
     for(int i=0;i<n;++i) check(std::abs(heard[static_cast<std::size_t>(i)]-l[static_cast<std::size_t>(i)])<.0001f,"Input duck follows the sidechain");
 }
+double bandPower(const std::vector<float>& x,int begin,int end,double hz,double sr) {
+    double re=0,im=0;
+    const double w=2*3.14159265358979323846*hz/sr;
+    for(int i=begin;i<end;++i) {
+        const double v=x[static_cast<std::size_t>(i)];
+        re+=v*std::cos(w*i);
+        im-=v*std::sin(w*i);
+    }
+    const double n=std::max(1,end-begin);
+    return (re*re+im*im)/(n*n);
+}
+void fillStereoSine(Render& x,double hz,float amp,int count=-1) {
+    const int stop=count<0?static_cast<int>(x.l.size()):std::min(count,static_cast<int>(x.l.size()));
+    const double w=2*3.14159265358979323846*hz/x.sr;
+    for(int i=0;i<stop;++i) {
+        const float v=static_cast<float>(std::sin(w*i)*amp);
+        x.l[static_cast<std::size_t>(i)]=x.r[static_cast<std::size_t>(i)]=v;
+    }
+}
+void shimmerOctaveShift() {
+    constexpr double sr=48000;
+    Render x(sr,static_cast<int>(sr*1.6));
+    auto s=clean();s.rate=7;s.feedback=.75f;s.shimmer=1.f;
+    fillStereoSine(x,440.0,.4f,static_cast<int>(sr*.45));
+    x.run(s,120,256);
+    const int a=static_cast<int>(sr*1.05),b=static_cast<int>(sr*1.4);
+    const double e440=bandPower(x.l,a,b,440,sr),e880=bandPower(x.l,a,b,880,sr);
+    check(e880>e440*.08,"Shimmer does not pitch-shift feedback up an octave (+12 semitones)");
+    Render hi(sr,static_cast<int>(sr*1.6));
+    fillStereoSine(hi,6500.0,.4f,static_cast<int>(sr*.45));
+    hi.run(s,120,256);
+    const double e13k=bandPower(hi.l,a,b,13000,sr);
+    check(e13k<e880*.35,"Shimmer lacks 9 kHz anti-alias LPF before feedback injection");
+}
+void hermiteAllModes() {
+    constexpr double sr=48000,bpm=137,hz=12000;
+    Render x(sr,24000);
+    auto s=clean();s.rate=2;s.character=Character::digital;
+    fillStereoSine(x,hz,.5f);
+    x.run(s,bpm,256);
+    const double tapPower=bandPower(x.l,12000,20000,hz,sr);
+    check(tapPower>.042,"Fractional digital tap uses linear interpolation instead of Hermite");
+    Render haas(sr,24000);
+    s.rate=2;s.stereoOffset=1.31f;
+    fillStereoSine(haas,hz,.5f);
+    haas.run(s,120,256);
+    const double haasPower=bandPower(haas.r,12000,20000,hz,sr);
+    check(haasPower>.042,"Fractional stereo Haas offset uses linear interpolation instead of Hermite");
+}
+void tapeHysteresisAndHeadBump() {
+    constexpr double sr=48000;
+    auto measureHz=[&](double hz) {
+        Render x(sr,36000);
+        auto s=clean();s.rate=2;s.character=Character::tape;s.drive=.35f;s.motion=0.f;
+        fillStereoSine(x,hz,.2f);
+        x.run(s,120,256);
+        return bandPower(x.l,16000,32000,hz,sr);
+    };
+    const double p30=measureHz(30),p95=measureHz(95),p320=measureHz(320);
+    check(p95>p30*1.12&&p95>p320*1.05,"Tape mode lacks 80-110 Hz 2-pole head-bump resonance");
+    Render flutter(sr,48000);
+    auto s=clean();s.rate=2;s.character=Character::tape;s.drive=0.f;s.motion=.8f;s.wobbleRate=1.f;s.wobbleShape=WobbleShape::sine;
+    fillStereoSine(flutter,1000.0,.3f);
+    flutter.run(s,120,256);
+    double diff=0;
+    for(int i=12000;i<24000;++i) diff+=std::abs(flutter.l[static_cast<std::size_t>(i)]-flutter.l[static_cast<std::size_t>(i+24000)]);
+    check(diff/12000.0>1.e-3,"Tape flutter is purely periodic instead of stochastic Ornstein-Uhlenbeck");
+}
+void bbdCompanderAndClockFilter() {
+    constexpr double sr=48000;
+    auto measureRate=[&](int gridRate) {
+        Render x(sr,72000);
+        auto s=clean();s.rate=gridRate;s.character=Character::bbd;s.drive=.25f;s.motion=0.f;
+        fillStereoSine(x,3600.0,.25f);
+        x.run(s,120,256);
+        return bandPower(x.l,52000,70000,3600,sr);
+    };
+    const double shortDelay=measureRate(0),longDelay=measureRate(9);
+    check(shortDelay>longDelay*4.0,"BBD anti-alias/reconstruction LPF cutoff does not scale inversely with delay time");
+}
+void loFiAntiAliasAndDither() {
+    constexpr double sr=48000;
+    Render x(sr,36000);
+    auto s=clean();s.rate=2;s.character=Character::loFi;
+    fillStereoSine(x,15000.0,.4f);
+    x.run(s,120,256);
+    const double folded3k=bandPower(x.l,14000,32000,3000,sr);
+    check(folded3k<1.e-4,"Lo-Fi decimator folds 15 kHz down to 3 kHz without anti-alias filtering");
+}
+void hadamardAllpassDiffuser() {
+    auto s=clean();s.rate=0;s.diffusion=1.f;s.diffusionSize=18.f;
+    Render x(16000,16000);
+    x.l[0]=x.r[0]=1.f;
+    x.run(s,120,128);
+    const double eL=energy(x.l),eR=energy(x.r);
+    check(std::abs(eL-1.0)<.05&&std::abs(eR-1.0)<.05,"Diffuser is not unity-gain energy preserving");
+    check(x.l!=x.r,"Diffuser uses identical delay lengths across stereo channels");
+}
+void oversampledZdfFeedback() {
+    constexpr double sr=48000;
+    Render x(sr,36000);
+    auto s=clean();s.rate=2;s.character=Character::digital;
+    fillStereoSine(x,13000.0,1.8f);
+    x.run(s,120,256);
+    const double fundamental=bandPower(x.l,14000,32000,13000,sr);
+    const double aliased9k=bandPower(x.l,14000,32000,9000,sr);
+    check(fundamental>.1&&aliased9k<fundamental*1.e-4,"Feedback shaper folds 3rd harmonic of 13 kHz back to 9 kHz (not 2x oversampled)");
+}
+void wsolaPreFeedbackReverse() {
+    constexpr double sr=8000;
+    Render shortTap(sr,16000);
+    auto s=clean();s.rate=0;s.reverse=1.f;s.reverseRate=7;s.feedback=0.f;
+    shortTap.l[400]=shortTap.r[400]=1.f;
+    shortTap.run(s,120,128);
+    check(energy(shortTap.l,401,850)<1.e-5,"Short-delay reverse crosses write boundary and leaks before tap delay");
+    Render tonal(sr,24000);
+    s.rate=7;s.feedback=.6f;
+    fillStereoSine(tonal,337.0,.3f);
+    tonal.run(s,120,128);
+    float maxJump=0.f;
+    for(std::size_t i=6000;i<tonal.l.size();++i) maxJump=std::max(maxJump,std::abs(tonal.l[i]-tonal.l[i-1]));
+    check(maxJump<.12f,"WSOLA reverse splices click on non-harmonic tones with feedback");
+}
+void rmsLookaheadDbDucking() {
+    constexpr double sr=16000;
+    constexpr int n=32000;
+    DelayEngine engine;engine.prepare(sr);
+    auto s=clean();s.rate=2;s.duck=.9f;s.duckRate=0;s.duckSource=DuckSource::sidechain;
+    std::vector<float> l(n),r(n),sc(n);
+    for(int i=0;i<n;++i) {
+        l[static_cast<std::size_t>(i)]=r[static_cast<std::size_t>(i)]=.4f;
+        if(i>=12000) sc[static_cast<std::size_t>(i)]=static_cast<float>(std::sin(2*3.14159265358979323846*45.0*i/sr)*.85);
+    }
+    sc[12000]=1.f;
+    engine.process(l.data(),r.data(),n,s,{180,0,true},sc.data(),sc.data());
+    const float edgeStep=std::abs(l[12000]-l[11999]);
+    check(edgeStep<.025f,"Ducking clips initial transient duck edge with single-sample gain step");
+    const double ripple90=bandPower(l,16000,30000,90,sr);
+    check(ripple90<1.5e-5,"Ducking distorts wet tail with rectified 90 Hz bass ripple");
+}
+void equalPowerTransitionAndBbdVarispeed() {
+    constexpr double sr=16000;
+    Render x(sr,32000);
+    auto s=clean();s.rate=7;s.character=Character::digital;
+    std::uint32_t rng=1234525u;
+    for(std::size_t i=0;i<x.l.size();++i) {
+        rng=rng*1664525u+1013904223u;
+        const float v=(static_cast<float>(rng>>8)/8388608.f-1.f)*.3f;
+        x.l[i]=x.r[i]=v;
+    }
+    x.engine.process(x.l.data(),x.r.data(),20000,s,{120,0,true});
+    const double steady=energy(x.l,19600,20000)/400.0;
+    s.taps[0].step=2;
+    x.engine.process(x.l.data()+20000,x.r.data()+20000,400,s,{120,2.5,true});
+    const double mid=energy(x.l,20120,20280)/160.0;
+    check(mid>steady*.75,"Rate transition has a -3 dB linear crossfade dip instead of equal-power");
+    Render bbd(sr,32000);
+    s.taps[0].step=1;s.character=Character::bbd;s.drive=0.f;
+    fillStereoSine(bbd,440.0,.3f);
+    bbd.engine.process(bbd.l.data(),bbd.r.data(),20000,s,{120,0,true});
+    s.taps[0].step=2;
+    bbd.engine.process(bbd.l.data()+20000,bbd.r.data()+20000,4000,s,{120,2.5,true});
+    const double shifted=bandPower(bbd.l,20600,22200,440,sr),total=energy(bbd.l,20600,22200)/1600.0;
+    check(total>1.e-4&&shifted<total*.35,"BBD mode does not use continuous varispeed Doppler slewing on rate changes");
+}
 int main() {
     int failed=0;
-    const std::pair<const char*,void(*)()> cases[]={{"sidechain duck",sidechainDuck},{"reverse timing",reverseTiming},{"reverse clicks",reverseClicks},{"reverse feedback ping-pong",reverseFeedbackPingPong},{"reverse block size",reverseBlockSize},{"modulation edges",modulationEdges},{"shimmer, stereo Haas, and duck hold",shimmerHaasDuckHold},{"sustained settled hold",sustainedHold},{"settled hold input rejection",settledHoldInput},{"tap probability/ratchets",tapPerformance},{"tap tone",tapTone},{"groove/morph",grooveMorph},{"diffusion",diffusion},{"wobble rate",wobbleRate},{"wobble shape",wobbleShape},{"freeze",freezeLoop},{"fast timing automation",fastTimeAutomation},{"stutter seams",stutterEdges},{"filter automation",filterAutomation},{"extended host-synced grid",extendedGridTiming},{"beat timing",timing},{"routing",routing},{"taps",taps},{"dry/reset",dryAndReset},{"filters",filters},{"effects",effects},{"stability/block size",stable}};
+    const std::pair<const char*,void(*)()> cases[]={{"shimmer octave shift",shimmerOctaveShift},{"Hermite interpolation all modes",hermiteAllModes},{"tape hysteresis and head bump",tapeHysteresisAndHeadBump},{"BBD compander and clock filter",bbdCompanderAndClockFilter},{"Lo-Fi anti-alias and dither",loFiAntiAliasAndDither},{"Hadamard allpass diffuser",hadamardAllpassDiffuser},{"2x oversampled ZDF feedback",oversampledZdfFeedback},{"WSOLA pre-feedback reverse",wsolaPreFeedbackReverse},{"RMS lookahead dB ducking",rmsLookaheadDbDucking},{"equal-power transition and BBD varispeed",equalPowerTransitionAndBbdVarispeed},{"sidechain duck",sidechainDuck},{"reverse timing",reverseTiming},{"reverse clicks",reverseClicks},{"reverse feedback ping-pong",reverseFeedbackPingPong},{"reverse block size",reverseBlockSize},{"modulation edges",modulationEdges},{"shimmer, stereo Haas, and duck hold",shimmerHaasDuckHold},{"sustained settled hold",sustainedHold},{"settled hold input rejection",settledHoldInput},{"tap probability/ratchets",tapPerformance},{"tap tone",tapTone},{"groove/morph",grooveMorph},{"diffusion",diffusion},{"wobble rate",wobbleRate},{"wobble shape",wobbleShape},{"freeze",freezeLoop},{"fast timing automation",fastTimeAutomation},{"stutter seams",stutterEdges},{"filter automation",filterAutomation},{"extended host-synced grid",extendedGridTiming},{"beat timing",timing},{"routing",routing},{"taps",taps},{"dry/reset",dryAndReset},{"filters",filters},{"effects",effects},{"stability/block size",stable}};
     for(const auto& [name,test]:cases)try{test();std::cout<<"PASS "<<name<<'\n';}catch(const std::exception& e){++failed;std::cerr<<"FAIL "<<name<<": "<<e.what()<<'\n';}
     return failed?1:0;
 }

@@ -1,5 +1,6 @@
 #pragma once
 #include <array>
+#include <cstdint>
 #include <vector>
 namespace oed {
 constexpr int tapCount = 8;
@@ -43,7 +44,7 @@ public:
     float duckGain() const { return lastDuck; }
 private:
     struct Filter {
-        struct Stage { double b0=1,b1=0,b2=0,a1=0,a2=0,z1=0,z2=0; };
+        struct Stage { double g=0,r=1,a1=0,a2=0,a3=0,ic1=0,ic2=0; };
         std::array<Stage,4> stages{}, oldStages{};
         double smoothing=1, sr=48000, logHz=0, targetLogHz=0;
         int slope=0, oldSlope=0, fade=0, fadeLength=1;
@@ -53,25 +54,41 @@ private:
         float tick(float value);
         void clear();
     };
-    float read(const std::vector<float>&, double delay) const;
-    float readHermite(const std::vector<float>&, double delay) const;
-    float readReverse(const std::vector<float>&, double base, double chunk, double phase, bool hermite) const;
+    struct Svf2 { double ic1=0, ic2=0; };
+    struct Oversampler2x {
+        std::array<float,12> inHist{}, resEven{};
+        std::array<float,7> resOdd{};
+        std::size_t pos=0, oddPos=0;
+        float prevShaped=0;
+    };
+    float readHermite(const std::vector<float>&, std::size_t head, std::size_t validCount, double delay) const;
     double sampleRate=48000, phase=0, previousLoop=0, tapeLoop=0, oldLoop=0;
-    std::array<std::vector<float>,2> ring, wetHistory;
+    std::array<std::vector<float>,2> ring, revRing, wetHistory;
     std::array<std::array<std::vector<float>,diffusionStageLengths.size()>,2> diffusionHistory;
+    std::array<std::array<double,diffusionStageLengths.size()>,2> diffThiranState{};
     std::array<Filter,2> hp,lp;
-    std::array<std::array<Filter,2>,tapCount> tapHp,tapLp;
-    std::array<std::array<float,2>,tapCount> tapTone{};
+    std::array<std::array<Filter,2>,tapCount> tapHp,tapLp,oldTapHp,oldTapLp;
+    std::array<std::array<float,2>,tapCount> tapTone{},oldTapTone{};
+    std::array<Oversampler2x,2> oversampler{};
+    std::array<Svf2,2> shimmerLpA{}, shimmerLpB{}, tapeBump{}, tapeGapLp{}, bbdLpA{}, bbdLpB{}, lofiPreLp{}, lofiRecLp{};
+    std::array<double,2> tapeMag{}, tapePrevH{}, tapeHp{}, tapeDispIn{}, tapeDispOut{}, shimmerOffset{};
+    std::array<float,2> bbdPreLp{}, bbdCompRms{}, bbdDc{}, bbdExpRms{}, bbdDeLp{};
+    std::array<float,2> lofiDitherPrev{}, lofiQuantErr{}, held{};
+    std::array<std::int64_t,4> revGrainId{-1,-1,-1,-1};
+    std::array<std::array<std::array<double,4>,2>,2> revSpliceOffset{};
+    std::vector<float> duckRmsWindow;
+    std::size_t duckWinPos=0;
+    double duckSumSq=0, ouState=0, ouSmooth=0, diffModPhase=0, lofiPhase=0;
+    std::uint64_t ouCounter=0, lofiCounter=0;
     float freezeMix=0, diffusion=0, diffusionSize=12, shimmer=0, stereoOffset=0, duckHold=0, reverseMix=0, wobbleValue=0;
     double frozenLoop=1,wobblePhase=0,shimmerPhase=0,reverseChunk=1;bool wasFrozen=false;
-    std::array<float,2> tone{}, toneHp{}, held{};
     std::array<double,tapCount> delay{}, oldDelay{}, tapeDelay{};
     std::array<float,tapCount> gain{},pan{};
-    std::size_t write=0, wetWrite=0, diffusionWrite=0, capture=0, valid=0, wetValid=0;
-    int transition=0, holdCounter=0, sliceSize=1;
+    std::size_t write=0, revWrite=0, wetWrite=0, diffusionWrite=0, capture=0, valid=0, revValid=0, wetValid=0;
+    int transition=0, sliceSize=1, duckHoldCounter=0;
     double lastSlice=-1;
     float feedback=0,mix=0,width=1,output=1,duck=0,glitchMix=0,drive=0,motion=0;
-    float envelope=0,lastDuck=1;
+    float duckPeakEnv=0,duckGainDb=0,lastDuck=1;
     bool initialized=false;
 };
 }
