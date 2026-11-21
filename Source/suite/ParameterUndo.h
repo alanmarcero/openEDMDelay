@@ -1,6 +1,8 @@
 #pragma once
 
 #include <juce_audio_processors/juce_audio_processors.h>
+#include <array>
+#include <functional>
 #include <vector>
 
 namespace suite {
@@ -23,13 +25,17 @@ public:
     void undo();
     void redo();
     void clear();
-    bool canUndo() const { return undoManager.canUndo(); }
-    bool canRedo() const { return undoManager.canRedo(); }
+    void selectSlot(int slot);
+    void clearSlot(int slot);
+    bool canUndo() const { return managers[static_cast<std::size_t>(activeSlot)].canUndo(); }
+    bool canRedo() const { return managers[static_cast<std::size_t>(activeSlot)].canRedo(); }
 
     void setSuspended(bool shouldSuspend) { suspended = shouldSuspend; }
     void resync();
 
-    juce::UndoManager& manager() { return undoManager; }
+    std::function<void()> onUserEdit;
+
+    juce::UndoManager& manager() { return managers[static_cast<std::size_t>(activeSlot)]; }
 
 private:
     void parameterValueChanged(int index, float newValue) override;
@@ -38,7 +44,8 @@ private:
     bool onMessageThread() const;
 
     juce::AudioProcessor* processor = nullptr;
-    juce::UndoManager undoManager;
+    std::array<juce::UndoManager, 2> managers;
+    int activeSlot = 0;
     std::vector<float> last;
     int gestureDepth = 0;
     bool attached = false;

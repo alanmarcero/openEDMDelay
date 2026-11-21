@@ -18,7 +18,7 @@ private:
 
 ParameterUndo::~ParameterUndo() {
     detach();
-    undoManager.clearUndoHistory();
+    for (auto& m : managers) m.clearUndoHistory();
 }
 
 void ParameterUndo::attach(juce::AudioProcessor& target) {
@@ -44,7 +44,7 @@ void ParameterUndo::detach() {
 void ParameterUndo::beginGesture() {
     if (!attached || !onMessageThread()) return;
     if (gestureDepth++ == 0)
-        undoManager.beginNewTransaction();
+        managers[static_cast<std::size_t>(activeSlot)].beginNewTransaction();
 }
 
 void ParameterUndo::endGesture() {
@@ -57,7 +57,7 @@ bool ParameterUndo::addAction(juce::UndoableAction* action) {
         delete action;
         return false;
     }
-    return undoManager.perform(action);
+    return managers[static_cast<std::size_t>(activeSlot)].perform(action);
 }
 
 bool ParameterUndo::perform(juce::UndoableAction* action) {
@@ -65,20 +65,29 @@ bool ParameterUndo::perform(juce::UndoableAction* action) {
         delete action;
         return false;
     }
-    undoManager.beginNewTransaction();
-    return undoManager.perform(action);
+    managers[static_cast<std::size_t>(activeSlot)].beginNewTransaction();
+    return managers[static_cast<std::size_t>(activeSlot)].perform(action);
 }
 
 void ParameterUndo::undo() {
-    if (onMessageThread()) undoManager.undo();
+    if (onMessageThread()) managers[static_cast<std::size_t>(activeSlot)].undo();
 }
 
 void ParameterUndo::redo() {
-    if (onMessageThread()) undoManager.redo();
+    if (onMessageThread()) managers[static_cast<std::size_t>(activeSlot)].redo();
 }
 
 void ParameterUndo::clear() {
-    if (onMessageThread()) undoManager.clearUndoHistory();
+    if (onMessageThread()) managers[static_cast<std::size_t>(activeSlot)].clearUndoHistory();
+}
+
+void ParameterUndo::selectSlot(int slot) {
+    activeSlot = (slot == 1) ? 1 : 0;
+    resync();
+}
+
+void ParameterUndo::clearSlot(int slot) {
+    if (onMessageThread()) managers[slot == 1 ? 1u : 0u].clearUndoHistory();
 }
 
 void ParameterUndo::resync() {
@@ -95,7 +104,8 @@ void ParameterUndo::parameterValueChanged(int index, float newValue) {
     const float previous = last[static_cast<std::size_t>(index)];
     last[static_cast<std::size_t>(index)] = newValue;
     if (gestureDepth <= 0 || std::abs(previous - newValue) < 1.0e-6f) return;
-    undoManager.perform(new ParameterChange(*this, index, previous, newValue));
+    managers[static_cast<std::size_t>(activeSlot)].perform(new ParameterChange(*this, index, previous, newValue));
+    if (onUserEdit) onUserEdit();
 }
 
 void ParameterUndo::parameterGestureChanged(int, bool starting) {

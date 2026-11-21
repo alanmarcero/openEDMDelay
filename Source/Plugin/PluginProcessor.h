@@ -32,12 +32,20 @@ public:
     void getStateInformation(juce::MemoryBlock&) override;
     void setStateInformation(const void*,int) override;
     int displayedProgram() const {return oldBank.load() ? -1 : program.load();}
+    juce::String currentPresetName() const {return presetName;}
+    bool isPresetModified() const {return presetModified;}
+    void markPresetSaved(const juce::String& name) {presetName=name;presetModified=false;}
+    int savedEditorWidth() const {return editorWidth.load(std::memory_order_relaxed);}
+    int savedEditorHeight() const {return editorHeight.load(std::memory_order_relaxed);}
+    void setSavedEditorSize(int w,int h) {editorWidth.store(w,std::memory_order_relaxed);editorHeight.store(h,std::memory_order_relaxed);}
+    void selectABSlot(int slot);
+    void copyABSlot(bool aToB);
     void setPlainValue(int,float);
     void applyPattern(int);
     void recallProgram(int index,bool legacyBank);
     juce::MemoryBlock captureState();
     bool restoreParameters(const void*,int);
-    void applyUserPreset(const juce::MemoryBlock&);
+    void applyUserPreset(const juce::MemoryBlock&,const juce::String& name={});
     Settings settings() const {return readSettings(values);}
     float scopeSidechain(int bin) const {return sideScope[static_cast<std::size_t>(juce::jlimit(0,scopeBinCount-1,bin))].load(std::memory_order_relaxed);}
     float scopeDuck(int bin) const {return duckScope[static_cast<std::size_t>(juce::jlimit(0,scopeBinCount-1,bin))].load(std::memory_order_relaxed);}
@@ -56,6 +64,9 @@ private:
     std::atomic<bool> oldBank{false};
     std::atomic<int> program{0};
     std::atomic<bool> resetPending{false};
+    std::atomic<int> editorWidth{1200},editorHeight{850};
+    juce::String presetName;
+    bool presetModified=false;
     bool wasBypassed=false;
     double internalPhase=0, currentSampleRate=48000;
     std::array<std::atomic<float>,scopeBinCount> sideScope{},duckScope{};

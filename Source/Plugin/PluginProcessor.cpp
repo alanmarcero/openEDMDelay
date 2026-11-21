@@ -32,8 +32,9 @@ DelayProcessor::DelayProcessor():AudioProcessor(BusesProperties().withInput("Inp
     for(auto& bin:duckScope) bin.store(1.f,std::memory_order_relaxed);
     setCurrentProgram(0);
     history.attach(*this);
+    history.onUserEdit=[this]{presetModified=true;};
     ab.capture=[this]{return captureState();};
-    ab.restore=[this](const juce::MemoryBlock& block){restoreParameters(block.getData(),static_cast<int>(block.getSize()));history.clear();};
+    ab.restore=[this](const juce::MemoryBlock& block){restoreParameters(block.getData(),static_cast<int>(block.getSize()));};
     ab.seed();
 }
 void DelayProcessor::prepareToPlay(double sr,int){engine.prepare(sr);currentSampleRate=sr;internalPhase=0;wasBypassed=false;}
@@ -64,7 +65,8 @@ void DelayProcessor::processBlock(juce::AudioBuffer<float>& buffer,juce::MidiBuf
     captureScope(sideL,sideR,buffer.getNumSamples(),transport.ppq,transport.bpm,duckMeter.load());
     float peak=0.f;const int measured=std::min(buffer.getNumChannels(),mainChannels);
     for(int c=0;c<measured;++c) peak=std::max(peak,buffer.getMagnitude(c,0,buffer.getNumSamples()));
-    outputPeak.store(peak);
+    float prevPeak=outputPeak.load(std::memory_order_relaxed);
+    while(peak>prevPeak&&!outputPeak.compare_exchange_weak(prevPeak,peak,std::memory_order_relaxed)){}
 }
 void DelayProcessor::captureScope(const float* left,const float* right,int frames,double ppq,double bpm,float duck) {
     if(frames<=0||currentSampleRate<=0) return;
@@ -313,9 +315,20 @@ void DelayProcessor::setCurrentProgram(int index) {
 void DelayProcessor::recallProgram(int index,bool legacyBank) {
     program.store(juce::jlimit(0,std::max(0,getNumPrograms()-1),index));
     oldBank.store(legacyBank);
+    presetName=legacyBank?juce::String("Custom sound"):getProgramName(program.load());
+    presetModified=false;
+}
+void DelayProcessor::selectABSlot(int slot) {
+    ab.select(slot);
+    history.selectSlot(ab.active());
+}
+void DelayProcessor::copyABSlot(bool aToB) {
+    if(aToB){ab.copyAtoB();history.clearSlot(1);}
+    else{ab.copyBtoA();history.clearSlot(0);}
 }
 juce::MemoryBlock DelayProcessor::captureState() {
     auto state=parameters.copyState();state.setProperty("program",program.load(),nullptr);state.setProperty("programBank",oldBank.load()?0:3,nullptr);
+    state.setProperty("presetName",presetName,nullptr);state.setProperty("presetModified",presetModified,nullptr);
     juce::MemoryBlock block;if(auto xml=state.createXml()) copyXmlToBinary(*xml,block);return block;
 }
 bool DelayProcessor::restoreParameters(const void* data,int size) {
@@ -341,22 +354,37 @@ bool DelayProcessor::restoreParameters(const void* data,int size) {
     {
         suite::SuspendUndo pause(history);
         parameters.replaceState(state);
-        oldBank.store(static_cast<int>(state.getProperty("programBank",0))!=3);
+        const bool isLegacy=static_cast<int>(state.getProperty("programBank",0))!=3;
+        oldBank.store(isLegacy);
         program.store(juce::jlimit(0,getNumPrograms()-1,static_cast<int>(state.getProperty("program",0))));
+        const auto savedName=state.getProperty("presetName","").toString();
+        presetName=savedName.isNotEmpty()?savedName:(isLegacy?juce::String("Custom sound"):getProgramName(program.load()));
+        presetModified=static_cast<bool>(state.getProperty("presetModified",false));
         resetPending.store(true);
     }
     return true;
 }
-void DelayProcessor::applyUserPreset(const juce::MemoryBlock& block) {
-    history.perform(new PresetEdit(*this,captureState(),block));
+void DelayProcessor::applyUserPreset(const juce::MemoryBlock& block,const juce::String& name) {
+    auto xml=getXmlFromBinary(block.getData(),static_cast<int>(block.getSize()));
+    juce::MemoryBlock tagged=block;
+    if(xml!=nullptr&&name.isNotEmpty()) {
+        xml->setAttribute("presetName",name);
+        xml->setAttribute("presetModified",false);
+        xml->setAttribute("programBank",3);
+        copyXmlToBinary(*xml,tagged);
+    }
+    history.perform(new PresetEdit(*this,captureState(),tagged));
 }
 void DelayProcessor::getStateInformation(juce::MemoryBlock& block) {
     ab.captureActive();
     auto state=parameters.copyState();state.setProperty("program",program.load(),nullptr);state.setProperty("programBank",oldBank.load()?0:3,nullptr);
+    state.setProperty("presetName",presetName,nullptr);state.setProperty("presetModified",presetModified,nullptr);
     if(auto xml=state.createXml()) {
         xml->setAttribute("abActive",ab.active());
         xml->setAttribute("abA",ab.slot(0).toBase64Encoding());
         xml->setAttribute("abB",ab.slot(1).toBase64Encoding());
+        xml->setAttribute("editorWidth",editorWidth.load(std::memory_order_relaxed));
+        xml->setAttribute("editorHeight",editorHeight.load(std::memory_order_relaxed));
         copyXmlToBinary(*xml,block);
     }
 }
@@ -368,10 +396,14 @@ void DelayProcessor::setStateInformation(const void* data,int size) {
         slotsOk=slotA.fromBase64Encoding(xml->getStringAttribute("abA"))&&slotB.fromBase64Encoding(xml->getStringAttribute("abB"));
         slotIndex=xml->getIntAttribute("abActive",0)==1?1:0;
     }
+    if(xml->hasAttribute("editorWidth")&&xml->hasAttribute("editorHeight")) {
+        editorWidth.store(juce::jlimit(840,1920,xml->getIntAttribute("editorWidth",1200)),std::memory_order_relaxed);
+        editorHeight.store(juce::jlimit(595,1360,xml->getIntAttribute("editorHeight",850)),std::memory_order_relaxed);
+    }
     if(!restoreParameters(data,size)) return;
     if(slotsOk) ab.setSlots(std::move(slotA),std::move(slotB),slotIndex);
     else ab.seed();
-    history.clear();
+    history.clearSlot(0);history.clearSlot(1);history.selectSlot(ab.active());
 }
 }
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter(){return new oed::DelayProcessor;}
