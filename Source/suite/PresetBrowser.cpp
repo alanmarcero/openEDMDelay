@@ -56,7 +56,7 @@ void PresetBrowser::resized() {
     row.removeFromRight(4);
     rename.setBounds(row.removeFromRight(68));
     row.removeFromRight(4);
-    save.setBounds(row.removeFromRight(52));
+    save.setBounds(row.removeFromRight(76));
     row.removeFromRight(4);
     list.setBounds(row);
 }

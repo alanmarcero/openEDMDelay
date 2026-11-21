@@ -232,6 +232,43 @@ void ui(const juce::File& destination){
     browser->setSelectedId(13,juce::sendNotificationSync);
     require(p.getCurrentProgram()==12,"Preset menu did not update the processor");
     browser->setSelectedId(1,juce::sendNotificationSync);
+    auto* saveBtn=dynamic_cast<juce::TextButton*>(find(*e,"presetSave"));
+    require(saveBtn!=nullptr&&saveBtn->getWidth()>=72,"Save button is too narrow for Replace? confirm");
+    for(int tap=0;tap<tapCount;++tap){
+        auto* panSlider=dynamic_cast<juce::Slider*>(find(*e,parameterSpecs()[static_cast<std::size_t>(baseCount+tap*4+3)].id));
+        require(panSlider&&panSlider->isDoubleClickReturnEnabled()&&std::abs(panSlider->getDoubleClickReturnValue())<1e-6,"Pan double-click does not reset to centre");
+    }
+    auto* patternBox=dynamic_cast<juce::ComboBox*>(find(*e,"pattern"));
+    auto* slotB=dynamic_cast<juce::TextButton*>(find(*e,"slotB"));
+    auto* copyAB=dynamic_cast<juce::TextButton*>(find(*e,"copyAtoB"));
+    auto* slotA=dynamic_cast<juce::TextButton*>(find(*e,"slotA"));
+    require(patternBox&&slotA&&slotB&&copyAB,"A/B or pattern controls missing");
+    slotB->triggerClick();
+    juce::MessageManager::getInstance()->runDispatchLoopUntil(20);
+    browser->setSelectedId(13,juce::sendNotificationSync);
+    patternBox->setSelectedId(2,juce::sendNotificationSync);
+    copyAB->triggerClick();
+    juce::MessageManager::getInstance()->runDispatchLoopUntil(20);
+    require(patternBox->getSelectedId()==0&&browser->getSelectedId()==1,"Copy A>B did not sync pattern and preset display");
+    slotA->triggerClick();
+    juce::MessageManager::getInstance()->runDispatchLoopUntil(20);
+    p.outputPeak.store(2.0f,std::memory_order_relaxed);
+    juce::MessageManager::getInstance()->runDispatchLoopUntil(60);
+    auto countClipRed=[&]{
+        const auto shot=e->createComponentSnapshot({925,638,235,10});
+        int red=0;
+        for(int y=0;y<shot.getHeight();++y) for(int x=0;x<shot.getWidth();++x){
+            const auto c=shot.getPixelAt(x,y);
+            if(c.getRed()>200&&c.getGreen()<100&&c.getBlue()<100) ++red;
+        }
+        return red;
+    };
+    require(countClipRed()>20,"Output meter did not latch clip state");
+    const juce::Point<int> meterPt{1040,630};
+    auto* meterHit=e->getComponentAt(meterPt);
+    require(meterHit==e.get(),"Content intercepts mouse clicks above output meter");
+    meterHit->mouseDown(juce::MouseEvent(juce::Desktop::getInstance().getMainMouseSource(),meterPt.toFloat(),juce::ModifierKeys(),0.0f,0.0f,0.0f,0.0f,0.0f,meterHit,meterHit,juce::Time::getCurrentTime(),meterPt.toFloat(),juce::Time::getCurrentTime(),1,false));
+    require(countClipRed()==0,"Clicking output meter did not clear clip latch");
     auto* initialMix=find(*e,"mix");require(initialMix!=nullptr,"Initial mix control missing");bool initialUnit=false;
     for(auto* child:initialMix->getChildren())if(auto* label=dynamic_cast<juce::Label*>(child))initialUnit=label->getText()=="28%";
     require(initialUnit,"Initial knob value is missing its unit");

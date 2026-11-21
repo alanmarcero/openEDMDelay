@@ -181,6 +181,7 @@ DelayEditor::DelayEditor(DelayProcessor& p) : AudioProcessorEditor(p), owner(p),
     setLookAndFeel(&look);
     reel = juce::Drawable::createFromImageData(BinaryData::echoreel_svg, BinaryData::echoreel_svgSize);
     content.setSize(kDesignWidth, kDesignHeight);
+    content.setInterceptsMouseClicks(false, true);
     addAndMakeVisible(content);
 
     for (int i = 0; i < parameterCount; ++i) makeControl(i);
@@ -263,8 +264,8 @@ DelayEditor::DelayEditor(DelayProcessor& p) : AudioProcessorEditor(p), owner(p),
     redoButton.onClick = [this] { owner.history.redo(); pattern.setSelectedId(0, juce::dontSendNotification); };
     slotA.onClick = [this] { owner.selectABSlot(0); pattern.setSelectedId(0, juce::dontSendNotification); };
     slotB.onClick = [this] { owner.selectABSlot(1); pattern.setSelectedId(0, juce::dontSendNotification); };
-    copyAB.onClick = [this] { owner.copyABSlot(true); };
-    copyBA.onClick = [this] { owner.copyABSlot(false); };
+    copyAB.onClick = [this] { owner.copyABSlot(true); pattern.setSelectedId(0, juce::dontSendNotification); syncPresetDisplay(); };
+    copyBA.onClick = [this] { owner.copyABSlot(false); pattern.setSelectedId(0, juce::dontSendNotification); syncPresetDisplay(); };
 
     addSuiteButton(pageMain, "pageMain", "Show Time, Echo Filters, and Duck controls.", "Main controls");
     addSuiteButton(pageGroove, "pageGroove", "Show Groove, Hold, and Tap Performance controls.", "Groove and taps");
@@ -365,7 +366,6 @@ void DelayEditor::makeControl(int i) {
     c->setComponentID(spec.id);
     const bool step = spec.id.endsWith("Step");
     const bool pan = i >= baseCount && i < swing && (i - baseCount) % 4 == 3;
-    c->setDoubleClickReturnValue(true, pan ? 0.0 : spec.initial);
     if (step) {
         c->setSliderStyle(juce::Slider::LinearBar);
         c->setTextBoxIsEditable(true);
@@ -387,6 +387,7 @@ void DelayEditor::makeControl(int i) {
     }
     content.addAndMakeVisible(*c);
     sliders.push_back(std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(owner.parameters, spec.id, *c));
+    c->setDoubleClickReturnValue(true, pan ? 0.0 : spec.initial);
     c->setTooltip(spec.name + ". Drag to adjust; double-click to reset. Host automatable.");
     controls[static_cast<std::size_t>(i)] = std::move(c);
 
@@ -814,7 +815,7 @@ void DelayEditor::timerCallback() {
     content.repaint(kMeterPanelArea);
     if (lowerPage == 0) {
         content.repaint(scopeFrame.getBounds());
-        content.repaint(765, 610, 115, 22);
+        content.repaint(752, 610, 128, 34);
     }
 }
 
