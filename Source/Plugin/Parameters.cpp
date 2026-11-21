@@ -74,7 +74,36 @@ juce::AudioProcessorValueTreeState::ParameterLayout makeLayout() {
         else {
             const float interval=(s.id.endsWith("Step"))?1.f:.01f;
             juce::NormalisableRange<float> range{s.min,s.max,interval,s.skew};
-            layout.add(std::make_unique<juce::AudioParameterFloat>(id,s.name,range,s.initial,juce::AudioParameterFloatAttributes{}.withLabel(s.unit)));
+            const auto text=[unit=s.unit,isPan=s.id.endsWith("Pan"),isLfo=s.max<20,isBipolar=s.min<0](float value,int)->juce::String {
+                if(isPan) {
+                    const int amount=juce::roundToInt(value);
+                    if(amount==0) return "C";
+                    return juce::String(std::abs(amount))+(amount<0?" L":" R");
+                }
+                if(unit=="%") return juce::String(juce::roundToInt(value))+"%";
+                if(unit=="BPM") return juce::String(juce::roundToInt(value))+" BPM";
+                const int tenths=juce::roundToInt(value*10);
+                if(unit=="dB"&&tenths==0) return "0.0 dB";
+                if(unit=="dB") return (tenths>0?"+":"")+juce::String(static_cast<float>(tenths)/10,1)+" dB";
+                if(unit=="Hz"&&isLfo) return juce::String(value,2)+" Hz";
+                if(unit=="Hz"&&value>=999.5f) return juce::String(value/1000,2)+" kHz";
+                if(unit=="Hz") return juce::String(juce::roundToInt(value))+" Hz";
+                if(unit=="ms") {
+                    if(tenths==0) return "0.0 ms";
+                    const auto sign=isBipolar&&tenths>0?"+":"";
+                    if(std::abs(tenths)<100) return sign+juce::String(static_cast<float>(tenths)/10,1)+" ms";
+                    return sign+juce::String(juce::roundToInt(value))+" ms";
+                }
+                return juce::String(juce::roundToInt(value));
+            };
+            const auto parse=[unit=s.unit,isPan=s.id.endsWith("Pan")](const juce::String& typed) {
+                const auto trimmed=typed.trim();const float number=trimmed.getFloatValue();
+                if(isPan&&trimmed.containsIgnoreCase("L")) return -std::abs(number);
+                if(unit=="Hz"&&trimmed.containsIgnoreCase("k")) return number*1000;
+                if(unit=="ms"&&trimmed.endsWithIgnoreCase("s")&&!trimmed.endsWithIgnoreCase("ms")) return number*1000;
+                return number;
+            };
+            layout.add(std::make_unique<juce::AudioParameterFloat>(id,s.name,range,s.initial,juce::AudioParameterFloatAttributes{}.withStringFromValueFunction(text).withValueFromStringFunction(parse)));
         }
     }return layout;
 }

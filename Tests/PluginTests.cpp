@@ -78,6 +78,24 @@ static void diffusionHostTail() {
     p.setPlainValue(diffusion,100);p.setPlainValue(diffusionSize,30);
     require(p.getTailLengthSeconds()>dryTail+.5,"Host tail excludes the diffusion network decay");
 }
+static void typedValues() {
+    DelayProcessor p;
+    for(auto* parameter:p.getParameters()) {
+        if(dynamic_cast<juce::AudioParameterFloat*>(parameter)==nullptr) continue;
+        for(const float position:{0.f,.13f,.5f,.77f,1.f,parameter->getDefaultValue()}) {
+            const auto shown=parameter->getText(position,0);
+            require(parameter->getText(parameter->getValueForText(shown),0)==shown,("Typed text does not round-trip: "+parameter->getName(64)+" "+shown).toRawUTF8());
+        }
+    }
+    const auto valueFor=[&p](int id,const juce::String& typed){auto* param=p.parameters.getParameter(parameterSpecs()[static_cast<std::size_t>(id)].id);return param->convertFrom0to1(param->getValueForText(typed));};
+    const auto textFor=[&p](int id,float value){auto* param=p.parameters.getParameter(parameterSpecs()[static_cast<std::size_t>(id)].id);return param->getText(param->convertTo0to1(value),0);};
+    require(std::abs(valueFor(mix,"50")-50)<.01f&&std::abs(valueFor(mix,"50%")-50)<.01f,"Percent entry rejects the % sign");
+    require(std::abs(valueFor(highPass,"5k")-5000)<1&&std::abs(valueFor(tapExtraStart+3,"5 kHz")-5000)<1,"Hz entry ignores k");
+    require(std::abs(valueFor(output,"+3 dB")-3)<.01f&&std::abs(valueFor(diffusionSize,"0.012 s")-12)<.01f,"dB or s entry failed");
+    require(std::abs(valueFor(baseCount+3,"40 L")+40)<.01f&&std::abs(valueFor(baseCount+3,"C"))<.01f,"Pan entry failed");
+    require(textFor(highPass,850)=="850 Hz"&&textFor(highPass,6800)=="6.80 kHz"&&textFor(output,3)=="+3.0 dB"&&textFor(output,-.01f)=="0.0 dB","Frequency or gain format");
+    require(textFor(diffusionSize,4.5f)=="4.5 ms"&&textFor(diffusionSize,16)=="16 ms"&&textFor(stereoOffset,4)=="+4.0 ms"&&textFor(baseCount+3,-40)=="40 L"&&textFor(baseCount+3,.3f)=="C","Time or pan format");
+}
 void recall(){legacyAndPerformanceState();DelayProcessor p;for(int i=0;i<parameterCount;++i){const auto& s=parameterSpecs()[static_cast<std::size_t>(i)];p.setPlainValue(i,s.min+(s.max-s.min)*.73f);}juce::MemoryBlock state;p.getStateInformation(state);DelayProcessor restored;restored.setStateInformation(state.getData(),static_cast<int>(state.getSize()));for(int i=0;i<parameterCount;++i)require(p.values[static_cast<std::size_t>(i)]->load()==restored.values[static_cast<std::size_t>(i)]->load(),"Session state loses parameter");restored.setStateInformation("invalid",7);require(restored.values[mix]->load()==p.values[mix]->load(),"Malformed state resets parameters");}
 juce::Component* find(juce::Component& root,const juce::String& id){if(root.getComponentID()==id)return &root;for(auto* c:root.getChildren())if(auto* result=find(*c,id))return result;return nullptr;}
 static void scrollableControls() {
@@ -483,4 +501,4 @@ static void sidechainAndSuite() {
         require(warm>30,"Sidechain kick is not drawn behind the duck curve");
     }
 }
-int main(int argc,char** argv){juce::ScopedJuceInitialiser_GUI gui;int errors=0;for(const auto& [name,test]:std::initializer_list<std::pair<const char*,void(*)()>>{{"sidechain buses, ducking, undo, A/B, presets",sidechainAndSuite},{"factory voices",factoryVoices},{"previous factory bank",previousFactoryBank},{"factory impulse responses and rhythms",bankAudio},{"filtered tap host tail",filteredTapTail},{"diffusion host tail",diffusionHostTail},{"scrollable control access",scrollableControls},{"host audio/bypass",audio},{"session recall",recall},{"malformed parameter state",malformedState},{"preset while bypassed",presetWhileBypassed}})try{test();std::cout<<"PASS "<<name<<'\n';}catch(const std::exception& e){std::cerr<<"FAIL "<<name<<": "<<e.what()<<'\n';++errors;}try{ui(juce::File::getCurrentWorkingDirectory().getChildFile(argc>1?argv[1]:"docs/screenshots"));std::cout<<"PASS native controls and actual editor screenshots\n";}catch(const std::exception& e){std::cerr<<"FAIL UI: "<<e.what()<<'\n';++errors;}return errors?1:0;}
+int main(int argc,char** argv){juce::ScopedJuceInitialiser_GUI gui;int errors=0;for(const auto& [name,test]:std::initializer_list<std::pair<const char*,void(*)()>>{{"sidechain buses, ducking, undo, A/B, presets",sidechainAndSuite},{"factory voices",factoryVoices},{"previous factory bank",previousFactoryBank},{"factory impulse responses and rhythms",bankAudio},{"filtered tap host tail",filteredTapTail},{"diffusion host tail",diffusionHostTail},{"scrollable control access",scrollableControls},{"host audio/bypass",audio},{"session recall",recall},{"typed values",typedValues},{"malformed parameter state",malformedState},{"preset while bypassed",presetWhileBypassed}})try{test();std::cout<<"PASS "<<name<<'\n';}catch(const std::exception& e){std::cerr<<"FAIL "<<name<<": "<<e.what()<<'\n';++errors;}try{ui(juce::File::getCurrentWorkingDirectory().getChildFile(argc>1?argv[1]:"docs/screenshots"));std::cout<<"PASS native controls and actual editor screenshots\n";}catch(const std::exception& e){std::cerr<<"FAIL UI: "<<e.what()<<'\n';++errors;}return errors?1:0;}
