@@ -178,9 +178,9 @@ void PresetBrowser::saveCurrent() {
     if (!handlers.capture) return;
     auto name = search.getText().trim();
     if (name.isEmpty()) name = "User preset";
-    if (handlers.onSaved) handlers.onSaved(name);
     juce::String error;
     if (!presets.save(name, handlers.capture(), error)) return;
+    if (handlers.onSaved) handlers.onSaved(name);
     for (const auto& entry : presets.list())
         if (entry.name.equalsIgnoreCase(name)) selectedKey = PresetStore::userKey(entry.file.getFileName());
     search.setText(name, juce::dontSendNotification);

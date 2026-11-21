@@ -153,10 +153,9 @@ void DelayLookAndFeel::drawLabel(juce::Graphics& g, juce::Label& label) {
         LookAndFeel_V4::drawLabel(g, label);
         return;
     }
-    const float savedAlpha = label.getAlpha();
-    label.setAlpha(savedAlpha * 0.35f);
+    g.beginTransparencyLayer(0.35f);
     LookAndFeel_V4::drawLabel(g, label);
-    label.setAlpha(savedAlpha);
+    g.endTransparencyLayer();
 }
 
 void DelayLookAndFeel::positionComboBoxText(juce::ComboBox& box, juce::Label& label) {
