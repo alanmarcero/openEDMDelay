@@ -304,10 +304,12 @@ DelayEditor::DelayEditor(DelayProcessor& p) : AudioProcessorEditor(p), owner(p),
     setLowerPage(0);
     syncPresetDisplay();
     setWantsKeyboardFocus(true);
+    const int initialWidth = owner.savedEditorWidth();
+    const int initialHeight = owner.savedEditorHeight();
     setResizable(true, true);
     getConstrainer()->setFixedAspectRatio(static_cast<double>(kDesignWidth) / static_cast<double>(kDesignHeight));
     setResizeLimits(840, 595, 1920, 1360);
-    setSize(owner.savedEditorWidth(), owner.savedEditorHeight());
+    setSize(initialWidth, initialHeight);
     startTimerHz(24);
 }
 
@@ -351,41 +353,42 @@ void DelayEditor::makeControl(int i) {
         content.addAndMakeVisible(*c);
         combos.push_back(std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(owner.parameters, spec.id, *c));
         controls[static_cast<std::size_t>(i)] = std::move(c);
-    } else {
-        auto c = std::make_unique<juce::Slider>();
-        c->setLookAndFeel(&look);
-        c->setTitle(spec.name);
-        c->setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
-        c->setTextBoxStyle(juce::Slider::TextBoxBelow, false, 86, 20);
-        c->setColour(juce::Slider::rotarySliderFillColourId, colour);
-        c->setComponentID(spec.id);
-        const bool step = spec.id.endsWith("Step");
-        const bool pan = i >= baseCount && i < swing && (i - baseCount) % 4 == 3;
-        c->setDoubleClickReturnValue(true, pan ? 0.0 : spec.initial);
-        if (step) {
-            c->setSliderStyle(juce::Slider::LinearBar);
-            c->setTextBoxIsEditable(true);
-            c->setColour(juce::Slider::trackColourId, colour);
-            c->setColour(juce::Slider::thumbColourId, colour);
-            c->setMouseDragSensitivity(180);
-        }
-        if (i == drive || i == motion || i == wobbleRate) {
-            c->setSliderStyle(juce::Slider::LinearHorizontal);
-            c->setTextBoxStyle(juce::Slider::TextBoxRight, false, i == wobbleRate ? 58 : 38, 22);
-            c->setColour(juce::Slider::trackColourId, colour);
-            c->setColour(juce::Slider::thumbColourId, colour);
-        }
-        if (pan) {
-            c->setSliderStyle(juce::Slider::LinearHorizontal);
-            c->setTextBoxStyle(juce::Slider::TextBoxBelow, false, 70, 16);
-            c->setColour(juce::Slider::trackColourId, colour);
-            c->setColour(juce::Slider::thumbColourId, colour);
-        }
-        content.addAndMakeVisible(*c);
-        sliders.push_back(std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(owner.parameters, spec.id, *c));
-        c->setTooltip(spec.name + ". Drag to adjust; double-click to reset. Host automatable.");
-        controls[static_cast<std::size_t>(i)] = std::move(c);
+        return;
     }
+
+    auto c = std::make_unique<juce::Slider>();
+    c->setLookAndFeel(&look);
+    c->setTitle(spec.name);
+    c->setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
+    c->setTextBoxStyle(juce::Slider::TextBoxBelow, false, 86, 20);
+    c->setColour(juce::Slider::rotarySliderFillColourId, colour);
+    c->setComponentID(spec.id);
+    const bool step = spec.id.endsWith("Step");
+    const bool pan = i >= baseCount && i < swing && (i - baseCount) % 4 == 3;
+    c->setDoubleClickReturnValue(true, pan ? 0.0 : spec.initial);
+    if (step) {
+        c->setSliderStyle(juce::Slider::LinearBar);
+        c->setTextBoxIsEditable(true);
+        c->setColour(juce::Slider::trackColourId, colour);
+        c->setColour(juce::Slider::thumbColourId, colour);
+        c->setMouseDragSensitivity(180);
+    }
+    if (i == drive || i == motion || i == wobbleRate) {
+        c->setSliderStyle(juce::Slider::LinearHorizontal);
+        c->setTextBoxStyle(juce::Slider::TextBoxRight, false, i == wobbleRate ? 58 : 38, 22);
+        c->setColour(juce::Slider::trackColourId, colour);
+        c->setColour(juce::Slider::thumbColourId, colour);
+    }
+    if (pan) {
+        c->setSliderStyle(juce::Slider::LinearHorizontal);
+        c->setTextBoxStyle(juce::Slider::TextBoxBelow, false, 70, 16);
+        c->setColour(juce::Slider::trackColourId, colour);
+        c->setColour(juce::Slider::thumbColourId, colour);
+    }
+    content.addAndMakeVisible(*c);
+    sliders.push_back(std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(owner.parameters, spec.id, *c));
+    c->setTooltip(spec.name + ". Drag to adjust; double-click to reset. Host automatable.");
+    controls[static_cast<std::size_t>(i)] = std::move(c);
 
     auto* tooltipClient = dynamic_cast<juce::SettableTooltipClient*>(controls[static_cast<std::size_t>(i)].get());
     if (tooltipClient == nullptr) return;
@@ -419,8 +422,10 @@ void DelayEditor::setLowerPage(int page) {
 }
 
 void DelayEditor::resized() {
-    const float scale = std::min(static_cast<float>(getWidth()) / static_cast<float>(kDesignWidth),
-                                 static_cast<float>(getHeight()) / static_cast<float>(kDesignHeight));
+    const float scale = (getWidth() > 0 && getHeight() > 0)
+        ? std::min(static_cast<float>(getWidth()) / static_cast<float>(kDesignWidth),
+                   static_cast<float>(getHeight()) / static_cast<float>(kDesignHeight))
+        : 1.0f;
     content.setBounds(0, 0, kDesignWidth, kDesignHeight);
     content.setTransform(juce::AffineTransform::scale(scale));
     if (getWidth() > 0 && getHeight() > 0) owner.setSavedEditorSize(getWidth(), getHeight());
@@ -536,8 +541,10 @@ void DelayEditor::resized() {
 }
 
 void DelayEditor::mouseDown(const juce::MouseEvent& e) {
-    const float scale = std::min(static_cast<float>(getWidth()) / static_cast<float>(kDesignWidth),
-                                 static_cast<float>(getHeight()) / static_cast<float>(kDesignHeight));
+    const float scale = (getWidth() > 0 && getHeight() > 0)
+        ? std::min(static_cast<float>(getWidth()) / static_cast<float>(kDesignWidth),
+                   static_cast<float>(getHeight()) / static_cast<float>(kDesignHeight))
+        : 1.0f;
     const auto designPoint = (e.position / std::max(0.1f, scale)).toInt();
     if (kMeterPanelArea.contains(designPoint)) {
         meterClipped = false;
@@ -644,10 +651,10 @@ void DelayEditor::paintContent(juce::Graphics& g) {
                 kick.startNewSubPath(area.getX(), area.getBottom());
                 kick.lineTo(x, yKick);
                 curve.startNewSubPath(x, yDuck);
-            } else {
-                kick.lineTo(x, yKick);
-                curve.lineTo(x, yDuck);
+                continue;
             }
+            kick.lineTo(x, yKick);
+            curve.lineTo(x, yDuck);
         }
         kick.lineTo(area.getRight(), area.getBottom());
         kick.closeSubPath();
@@ -659,10 +666,12 @@ void DelayEditor::paintContent(juce::Graphics& g) {
         g.setColour(theme::kText.withAlpha(0.7f));
         g.drawVerticalLine(static_cast<int>(headX), area.getY() + 1.0f, area.getBottom() - 1.0f);
         text(g, "SIDECHAIN", {static_cast<int>(area.getX()) + 6, static_cast<int>(area.getY()) + 1, 78, 12}, 9.0f, theme::kTextDim);
-    } else if (lowerPage == 1) {
+    }
+    if (lowerPage == 1) {
         panel(g, {20, 600, 290, 230}, "GROOVE & HOLD", theme::kAccentA);
         panel(g, {320, 600, 570, 230}, "TAP PERFORMANCE", theme::kAccentB);
-    } else {
+    }
+    if (lowerPage == 2) {
         panel(g, {20, 600, 300, 230}, "DIFFUSION & SHIMMER", theme::kAccentA);
         panel(g, {335, 600, 555, 230}, "GLITCH & REVERSE", theme::kAccentFx);
         text(g, "GLITCH", {352, 648, 104, 14}, 10.0f, theme::kTextDim, true, juce::Justification::centred);
@@ -672,7 +681,6 @@ void DelayEditor::paintContent(juce::Graphics& g) {
 
     // Pinned OUTPUT panel and dBFS meter with 1 s peak hold + click-to-clear clip latch.
     panel(g, {905, 600, 275, 230}, "OUTPUT", theme::kAccentOut);
-    text(g, "OUTPUT", {925, 616, 80, 18}, 10.0f, theme::kTextDim, true);
     const juce::String meterLabel = meterClipped ? "CLIP" : (meterDb <= -59.5f ? "-inf dB" : juce::String(meterDb, 1) + " dB");
     text(g, meterLabel, {1060, 616, 100, 18}, 10.0f, meterClipped ? juce::Colour(0xffff5544) : theme::kTextDim,
          meterClipped, juce::Justification::centredRight);
@@ -761,18 +769,18 @@ void DelayEditor::syncPresetDisplay() {
     const int current = owner.displayedProgram();
     const auto name = owner.currentPresetName();
     const bool modified = owner.isPresetModified();
-    if (current != shownProgram || name != shownPresetName || modified != shownModified) {
-        shownProgram = current;
-        shownPresetName = name;
-        shownModified = modified;
-        if (current >= 0 && !modified && name == owner.getProgramName(current)) {
-            preset.setSelectedId(current + 1, juce::dontSendNotification);
-        } else {
-            preset.setTextWhenNothingSelected(name.isNotEmpty() ? (name + (modified ? " *" : "")) : juce::String("Custom sound"));
-            preset.setSelectedId(0, juce::dontSendNotification);
-        }
+    if (current == shownProgram && name == shownPresetName && modified == shownModified) return;
+    shownProgram = current;
+    shownPresetName = name;
+    shownModified = modified;
+    if (current >= 0 && !modified && name == owner.getProgramName(current)) {
+        preset.setSelectedId(current + 1, juce::dontSendNotification);
         if (browser) browser->syncSelection(name, modified);
+        return;
     }
+    preset.setTextWhenNothingSelected(name.isNotEmpty() ? (name + (modified ? " *" : "")) : juce::String("Custom sound"));
+    preset.setSelectedId(0, juce::dontSendNotification);
+    if (browser) browser->syncSelection(name, modified);
 }
 
 void DelayEditor::timerCallback() {
@@ -793,7 +801,8 @@ void DelayEditor::timerCallback() {
     if (instantDb >= meterPeakHoldDb) {
         meterPeakHoldDb = instantDb;
         meterPeakHoldTimer = 1.0f;
-    } else {
+    }
+    if (instantDb < meterPeakHoldDb) {
         meterPeakHoldTimer -= dt;
         if (meterPeakHoldTimer <= 0.0f)
             meterPeakHoldDb = std::max(meterDb, meterPeakHoldDb - 18.0f * dt);

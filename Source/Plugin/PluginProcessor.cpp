@@ -323,8 +323,8 @@ void DelayProcessor::selectABSlot(int slot) {
     history.selectSlot(ab.active());
 }
 void DelayProcessor::copyABSlot(bool aToB) {
-    if(aToB){ab.copyAtoB();history.clearSlot(1);}
-    else{ab.copyBtoA();history.clearSlot(0);}
+    if(aToB){ab.copyAtoB();history.clearSlot(1);return;}
+    ab.copyBtoA();history.clearSlot(0);
 }
 juce::MemoryBlock DelayProcessor::captureState() {
     auto state=parameters.copyState();state.setProperty("program",program.load(),nullptr);state.setProperty("programBank",oldBank.load()?0:3,nullptr);
