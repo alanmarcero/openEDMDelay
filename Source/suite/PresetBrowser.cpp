@@ -5,36 +5,42 @@ namespace suite {
 PresetBrowser::PresetBrowser(juce::File pluginRoot, PresetHandlers handlersIn)
     : presets(std::move(pluginRoot)), handlers(std::move(handlersIn)) {
     search.setComponentID("presetSearch");
+    search.setTitle("Search presets");
     search.setTextToShowWhenEmpty("Search", juce::Colours::grey);
     search.setTooltip("Find a factory or user preset by name.");
     search.onTextChange = [this] { rebuild(); };
     addAndMakeVisible(search);
 
     list.setComponentID("presetList");
+    list.setTitle("Preset list");
     list.setTextWhenNothingSelected("Presets");
     list.setTooltip("Factory presets and your saved presets. Factory presets stay read-only.");
     list.onChange = [this] { choose(list.getSelectedId()); };
     addAndMakeVisible(list);
 
     favorite.setComponentID("presetFavorite");
+    favorite.setTitle("Favorite");
     favorite.setClickingTogglesState(true);
     favorite.setTooltip("Mark the selected preset as a favorite.");
     favorite.onClick = [this] { toggleFavorite(); };
     addAndMakeVisible(favorite);
 
     save.setComponentID("presetSave");
+    save.setTitle("Save preset");
     save.setTooltip("Save the current sound as a user preset. The search field is the name.");
-    save.onClick = [this] { saveCurrent(); };
+    save.onClick = [this] { handleSaveClick(); };
     addAndMakeVisible(save);
 
     rename.setComponentID("presetRename");
+    rename.setTitle("Rename preset");
     rename.setTooltip("Rename the selected user preset. Factory presets stay read-only.");
     rename.onClick = [this] { renameSelected(); };
     addAndMakeVisible(rename);
 
     remove.setComponentID("presetDelete");
+    remove.setTitle("Delete preset");
     remove.setTooltip("Delete the selected user preset. Factory presets stay read-only.");
-    remove.onClick = [this] { deleteSelected(); };
+    remove.onClick = [this] { handleDeleteClick(); };
     addAndMakeVisible(remove);
 
     rebuild();
@@ -93,16 +99,16 @@ void PresetBrowser::rebuild() {
         if (shown[static_cast<std::size_t>(i)].key == selectedKey) selectedId = i + 1;
     }
     list.setSelectedId(selectedId, juce::dontSendNotification);
-    if (const auto* row = current()) favorite.setToggleState(row->favorite, juce::dontSendNotification);
-    else favorite.setToggleState(false, juce::dontSendNotification);
+    updateActionStates();
 }
 
 void PresetBrowser::choose(int id) {
     if (rebuilding) return;
+    clearConfirmations();
     if (id <= 0 || id > static_cast<int>(shown.size())) return;
     const auto& row = shown[static_cast<std::size_t>(id - 1)];
     selectedKey = row.key;
-    favorite.setToggleState(row.favorite, juce::dontSendNotification);
+    updateActionStates();
     if (row.factory) {
         if (handlers.loadFactory) handlers.loadFactory(row.factoryIndex);
     } else if (handlers.loadUser) {
@@ -117,10 +123,62 @@ const PresetBrowser::Row* PresetBrowser::current() const {
     return &shown[static_cast<std::size_t>(id - 1)];
 }
 
+void PresetBrowser::timerCallback() {
+    clearConfirmations();
+}
+
+void PresetBrowser::clearConfirmations() {
+    stopTimer();
+    confirmingReplace = false;
+    confirmingDelete = false;
+    save.setButtonText("Save");
+    remove.setButtonText("Delete");
+}
+
+void PresetBrowser::updateActionStates() {
+    const auto* row = current();
+    favorite.setToggleState(row != nullptr && row->favorite, juce::dontSendNotification);
+    const bool userSelected = row != nullptr && !row->factory;
+    rename.setEnabled(userSelected);
+    remove.setEnabled(userSelected);
+}
+
+void PresetBrowser::handleSaveClick() {
+    auto name = search.getText().trim();
+    if (name.isEmpty()) name = "User preset";
+    bool exists = false;
+    for (const auto& entry : presets.list())
+        if (entry.name.equalsIgnoreCase(name)) { exists = true; break; }
+    if (exists && !confirmingReplace) {
+        clearConfirmations();
+        confirmingReplace = true;
+        save.setButtonText("Replace?");
+        startTimer(3000);
+        return;
+    }
+    clearConfirmations();
+    saveCurrent();
+}
+
+void PresetBrowser::handleDeleteClick() {
+    const auto* row = current();
+    if (row == nullptr || row->factory) return;
+    if (!confirmingDelete) {
+        clearConfirmations();
+        confirmingDelete = true;
+        remove.setButtonText("Delete?");
+        startTimer(3000);
+        return;
+    }
+    clearConfirmations();
+    deleteSelected();
+}
+
 void PresetBrowser::saveCurrent() {
     if (!handlers.capture) return;
     auto name = search.getText().trim();
     if (name.isEmpty()) name = "User preset";
+    if (handlers.onSaved) handlers.onSaved(name);
     juce::String error;
     if (!presets.save(name, handlers.capture(), error)) return;
     for (const auto& entry : presets.list())
@@ -173,12 +231,50 @@ void PresetBrowser::toggleFavorite() {
 }
 
 void PresetBrowser::selectFactory(int index) {
+    clearConfirmations();
     for (int i = 0; i < static_cast<int>(shown.size()); ++i) {
         if (shown[static_cast<std::size_t>(i)].factory && shown[static_cast<std::size_t>(i)].factoryIndex == index) {
             list.setSelectedId(i + 1, juce::sendNotificationSync);
             return;
         }
     }
+}
+
+void PresetBrowser::stepPreset(int delta) {
+    if (shown.empty()) return;
+    clearConfirmations();
+    int currentIdx = list.getSelectedId() - 1;
+    if (currentIdx < 0 || currentIdx >= static_cast<int>(shown.size())) {
+        currentIdx = -1;
+        for (int i = 0; i < static_cast<int>(shown.size()); ++i) {
+            if (shown[static_cast<std::size_t>(i)].key == selectedKey) { currentIdx = i; break; }
+        }
+    }
+    const int count = static_cast<int>(shown.size());
+    const int nextIdx = currentIdx < 0
+        ? (delta >= 0 ? 0 : count - 1)
+        : (currentIdx + delta % count + count) % count;
+    list.setSelectedId(nextIdx + 1, juce::sendNotificationSync);
+}
+
+void PresetBrowser::syncSelection(const juce::String& presetName, bool isModified) {
+    const juce::ScopedValueSetter<bool> guard(rebuilding, true);
+    int matchedId = 0;
+    for (int i = 0; i < static_cast<int>(shown.size()); ++i) {
+        if (shown[static_cast<std::size_t>(i)].name == presetName) {
+            selectedKey = shown[static_cast<std::size_t>(i)].key;
+            matchedId = isModified ? 0 : (i + 1);
+            break;
+        }
+    }
+    list.setTextWhenNothingSelected(presetName.isNotEmpty() ? (presetName + (isModified ? " *" : "")) : juce::String("Presets"));
+    list.setSelectedId(matchedId, juce::dontSendNotification);
+    updateActionStates();
+}
+
+juce::String PresetBrowser::selectedDisplayName() const {
+    if (const auto* row = current()) return row->name;
+    return {};
 }
 
 juce::StringArray PresetBrowser::visibleNames() const {

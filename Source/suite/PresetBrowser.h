@@ -13,12 +13,14 @@ struct PresetHandlers {
     std::function<void(int)> loadFactory;
     std::function<juce::MemoryBlock()> capture;
     std::function<void(const juce::MemoryBlock&)> loadUser;
+    std::function<void(const juce::String&)> onSaved;
 };
 
 // Searchable list of factory programs and user presets. Factory rows cannot be renamed or deleted.
-class PresetBrowser : public juce::Component {
+class PresetBrowser : public juce::Component, private juce::Timer {
 public:
     PresetBrowser(juce::File pluginRoot, PresetHandlers handlers);
+    ~PresetBrowser() override { stopTimer(); }
     void resized() override;
 
     void setSearch(const juce::String& text);
@@ -27,6 +29,9 @@ public:
     bool deleteSelected();
     void toggleFavorite();
     void selectFactory(int index);
+    void stepPreset(int delta);
+    void syncSelection(const juce::String& presetName, bool isModified);
+    juce::String selectedDisplayName() const;
     juce::StringArray visibleNames() const;
     bool selectionIsFactory() const;
     PresetStore& store() { return presets; }
@@ -41,6 +46,11 @@ private:
         juce::File file;
     };
 
+    void timerCallback() override;
+    void clearConfirmations();
+    void handleSaveClick();
+    void handleDeleteClick();
+    void updateActionStates();
     void rebuild();
     void choose(int id);
     const Row* current() const;
@@ -54,6 +64,8 @@ private:
     std::vector<Row> shown;
     juce::String selectedKey;
     bool rebuilding = false;
+    bool confirmingReplace = false;
+    bool confirmingDelete = false;
 };
 
 } // namespace suite
