@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.8.1
+
+- **UI & Suite Fixes:** UI polish, paged lower panels, wheel-safe scroll, engine-accurate dimming, synced preset pickers, feedback-accurate echoes, fixed-aspect scaling, centre-out pan, dBFS output meter, and screen-reader titles.
+
 ## v1.8.0
 
 Core DSP engine upgrades across pitch, character, feedback, and dynamics:
