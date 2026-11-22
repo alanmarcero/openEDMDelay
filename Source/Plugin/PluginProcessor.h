@@ -44,8 +44,12 @@ public:
     void applyPattern(int);
     void recallProgram(int index,bool legacyBank);
     juce::MemoryBlock captureState();
-    bool restoreParameters(const void*,int);
+    bool restoreParameters(const void*,int,bool preserveLocked=false);
     void applyUserPreset(const juce::MemoryBlock&,const juce::String& name={});
+    bool isParamLocked(const juce::String& paramId) const;
+    void setParamLocked(const juce::String& paramId,bool locked);
+    void unlockAllParams();
+    bool hasAnyLockedParam() const;
     Settings settings() const {return readSettings(values);}
     float scopeSidechain(int bin) const {return sideScope[static_cast<std::size_t>(juce::jlimit(0,scopeBinCount-1,bin))].load(std::memory_order_relaxed);}
     float scopeDuck(int bin) const {return duckScope[static_cast<std::size_t>(juce::jlimit(0,scopeBinCount-1,bin))].load(std::memory_order_relaxed);}
@@ -60,7 +64,9 @@ public:
 private:
     Transport updateClock(int frames);
     void captureScope(const float* left,const float* right,int frames,double ppq,double bpm,float duck);
+    void setPlainValueIfUnlocked(int id,float value);
     DelayEngine engine;
+    std::array<std::atomic<bool>,parameterCount> paramLocks{};
     std::atomic<bool> oldBank{false};
     std::atomic<int> program{0};
     std::atomic<bool> resetPending{false};

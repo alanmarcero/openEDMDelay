@@ -59,6 +59,76 @@ void setControlActive(juce::Component* control, juce::Label* label, bool active,
         client->setTooltip(active ? activeTip : (activeTip + " " + inactiveTip));
 }
 
+template <typename Base>
+struct LockableControl final : Base {
+    using Base::Base;
+    std::function<void()> onPopup;
+    void mouseDown(const juce::MouseEvent& e) override {
+        if (e.mods.isPopupMenu() && onPopup) {
+            onPopup();
+            return;
+        }
+        Base::mouseDown(e);
+    }
+};
+
+struct ChildPopupForwarder final : juce::MouseListener {
+    juce::Component* target = nullptr;
+    std::function<void()> onPopup;
+    void mouseDown(const juce::MouseEvent& e) override {
+        if (e.mods.isPopupMenu() && e.originalComponent != target && onPopup)
+            onPopup();
+    }
+};
+
+struct LockableSlider final : juce::Slider {
+    LockableSlider() {
+        forwarder.target = this;
+        addMouseListener(&forwarder, true);
+    }
+    ~LockableSlider() override { removeMouseListener(&forwarder); }
+    void setOnPopup(std::function<void()> cb) {
+        onPopup = cb;
+        forwarder.onPopup = std::move(cb);
+    }
+    void mouseDown(const juce::MouseEvent& e) override {
+        if (e.mods.isPopupMenu() && onPopup) {
+            onPopup();
+            return;
+        }
+        juce::Slider::mouseDown(e);
+    }
+private:
+    std::function<void()> onPopup;
+    ChildPopupForwarder forwarder;
+};
+
+void drawPadlock(juce::Graphics& g, juce::Rectangle<float> badge) {
+    g.setColour(theme::kBackground.withAlpha(0.85f));
+    g.fillRoundedRectangle(badge.expanded(1.5f, 1.0f), 3.0f);
+
+    const float cx = badge.getCentreX();
+    const float bodyW = 7.5f;
+    const float bodyH = 5.5f;
+    const float bodyX = cx - bodyW * 0.5f;
+    const float bodyY = badge.getBottom() - bodyH - 1.0f;
+    const float shackleR = 2.3f;
+
+    juce::Path shackle;
+    shackle.addCentredArc(cx, bodyY - 0.5f, shackleR, shackleR, 0.0f,
+                          -juce::MathConstants<float>::halfPi, juce::MathConstants<float>::halfPi, true);
+    shackle.startNewSubPath(cx - shackleR, bodyY - 0.5f);
+    shackle.lineTo(cx - shackleR, bodyY + 0.8f);
+    shackle.startNewSubPath(cx + shackleR, bodyY - 0.5f);
+    shackle.lineTo(cx + shackleR, bodyY + 0.8f);
+    g.setColour(theme::kAccentB);
+    g.strokePath(shackle, juce::PathStrokeType(1.4f));
+
+    g.fillRoundedRectangle(bodyX, bodyY, bodyW, bodyH, 1.4f);
+    g.setColour(theme::kBackground);
+    g.fillEllipse(cx - 0.9f, bodyY + bodyH * 0.5f - 0.9f, 1.8f, 1.8f);
+}
+
 } // namespace
 
 void TapGrid::paint(juce::Graphics& g) {
@@ -332,7 +402,8 @@ void DelayEditor::makeControl(int i) {
 
     if (i == bypass || (i >= baseCount && i < swing && (i - baseCount) % 4 == 0)) {
         const int tapNumber = (i - baseCount) / 4 + 1;
-        auto c = std::make_unique<juce::TextButton>(i == bypass ? "BYPASS" : "TAP " + juce::String(tapNumber).paddedLeft('0', 2));
+        auto c = std::make_unique<LockableControl<juce::TextButton>>(i == bypass ? "BYPASS" : "TAP " + juce::String(tapNumber).paddedLeft('0', 2));
+        c->onPopup = [this, i] { showLockMenu(i); };
         c->setClickingTogglesState(true);
         c->setColour(juce::TextButton::buttonOnColourId, i == bypass ? theme::kAccentB : colour);
         c->setComponentID(spec.id);
@@ -345,7 +416,8 @@ void DelayEditor::makeControl(int i) {
     }
 
     if (spec.choices.isNotEmpty()) {
-        auto c = std::make_unique<juce::ComboBox>();
+        auto c = std::make_unique<LockableControl<juce::ComboBox>>();
+        c->onPopup = [this, i] { showLockMenu(i); };
         c->setTitle(spec.name);
         c->setTooltip(spec.name);
         c->addItemList(juce::StringArray::fromTokens(spec.choices, "|", ""), 1);
@@ -357,7 +429,8 @@ void DelayEditor::makeControl(int i) {
         return;
     }
 
-    auto c = std::make_unique<juce::Slider>();
+    auto c = std::make_unique<LockableSlider>();
+    c->setOnPopup([this, i] { showLockMenu(i); });
     c->setLookAndFeel(&look);
     c->setTitle(spec.name);
     c->setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
@@ -784,10 +857,66 @@ void DelayEditor::syncPresetDisplay() {
     if (browser) browser->syncSelection(name, modified);
 }
 
+void DelayEditor::showLockMenu(int paramIndex) {
+    if (!juce::isPositiveAndBelow(paramIndex, parameterCount)) return;
+    const auto& spec = parameterSpecs()[static_cast<std::size_t>(paramIndex)];
+    const bool locked = owner.isParamLocked(spec.id);
+    juce::PopupMenu menu;
+    menu.addItem(1, (locked ? "Unlock " : "Lock ") + spec.name);
+    if (owner.hasAnyLockedParam()) {
+        menu.addSeparator();
+        menu.addItem(2, "Unlock all parameters");
+    }
+    juce::Component::SafePointer<DelayEditor> safeThis(this);
+    const auto paramId = spec.id;
+    menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(controls[static_cast<std::size_t>(paramIndex)].get()),
+        [safeThis, paramId, locked](int result) {
+            if (safeThis == nullptr) return;
+            if (result == 1) {
+                safeThis->owner.setParamLocked(paramId, !locked);
+                safeThis->content.repaint();
+            } else if (result == 2) {
+                safeThis->owner.unlockAllParams();
+                safeThis->content.repaint();
+            }
+        });
+}
+
+void DelayEditor::paintLockIndicators(juce::Graphics& g) {
+    for (int i = 0; i < parameterCount; ++i) {
+        const auto idx = static_cast<std::size_t>(i);
+        auto* control = controls[idx].get();
+        if (control == nullptr || !control->isVisible()) continue;
+        if (!owner.isParamLocked(parameterSpecs()[idx].id)) continue;
+
+        const auto r = control->getBounds().toFloat();
+        juce::Rectangle<float> badge{r.getRight() - 13.0f, r.getY() + 2.0f, 11.0f, 12.0f};
+        if (dynamic_cast<juce::ComboBox*>(control) != nullptr) {
+            badge = {r.getRight() - 28.0f, r.getY() + 3.0f, 11.0f, 12.0f};
+        } else if (auto* s = dynamic_cast<juce::Slider*>(control)) {
+            if (s->getSliderStyle() == juce::Slider::LinearHorizontal &&
+                s->getTextBoxPosition() == juce::Slider::TextBoxRight) {
+                badge = {r.getX() + 2.0f, r.getY() + 1.0f, 11.0f, 12.0f};
+            }
+        }
+        drawPadlock(g, badge);
+    }
+}
+
 void DelayEditor::timerCallback() {
     syncPresetDisplay();
     const auto s = owner.settings();
     updateControlStates(s);
+
+    bool locksChanged = false;
+    for (std::size_t i = 0; i < parameterCount; ++i) {
+        const bool locked = owner.isParamLocked(parameterSpecs()[i].id);
+        if (shownLocks[i] != locked) {
+            shownLocks[i] = locked;
+            locksChanged = true;
+        }
+    }
+    if (locksChanged) content.repaint();
 
     undoButton.setEnabled(owner.history.canUndo());
     redoButton.setEnabled(owner.history.canRedo());

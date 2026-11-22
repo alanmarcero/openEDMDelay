@@ -583,4 +583,63 @@ static void sidechainAndSuite() {
         require(warm>30,"Sidechain kick is not drawn behind the duck curve");
     }
 }
-int main(int argc,char** argv){juce::ScopedJuceInitialiser_GUI gui;int errors=0;for(const auto& [name,test]:std::initializer_list<std::pair<const char*,void(*)()>>{{"sidechain buses, ducking, undo, A/B, presets",sidechainAndSuite},{"factory voices",factoryVoices},{"previous factory bank",previousFactoryBank},{"factory impulse responses and rhythms",bankAudio},{"filtered tap host tail",filteredTapTail},{"diffusion host tail",diffusionHostTail},{"paged layout and scale",pagedLayoutAndScale},{"host audio/bypass",audio},{"session recall",recall},{"typed values",typedValues},{"malformed parameter state",malformedState},{"preset while bypassed",presetWhileBypassed}})try{test();std::cout<<"PASS "<<name<<'\n';}catch(const std::exception& e){std::cerr<<"FAIL "<<name<<": "<<e.what()<<'\n';++errors;}try{ui(juce::File::getCurrentWorkingDirectory().getChildFile(argc>1?argv[1]:"docs/screenshots"));std::cout<<"PASS native controls and actual editor screenshots\n";}catch(const std::exception& e){std::cerr<<"FAIL UI: "<<e.what()<<'\n';++errors;}return errors?1:0;}
+static void parameterLocking() {
+    DelayProcessor presetSource;
+    presetSource.setCurrentProgram(5);
+    const auto userPreset = presetSource.captureState();
+
+    DelayProcessor p;
+    const auto& params = p.getParameters();
+    require(params.size() == parameterCount, "Expected all parameters in getParameters()");
+
+    std::vector<float> lockedValues(static_cast<std::size_t>(params.size()), 0.0f);
+    for (int i = 0; i < params.size(); ++i) {
+        auto* rp = dynamic_cast<juce::RangedAudioParameter*>(params[i]);
+        require(rp != nullptr, "Parameter is not a RangedAudioParameter");
+        const auto id = rp->getParameterID();
+        require(!p.isParamLocked(id), ("Parameter started locked: " + id).toRawUTF8());
+
+        const float target = rp->getValue() < 0.5f ? 0.85f : 0.15f;
+        rp->setValueNotifyingHost(rp->convertTo0to1(rp->convertFrom0to1(target)));
+        lockedValues[static_cast<std::size_t>(i)] = rp->getValue();
+        p.setParamLocked(id, true);
+        require(p.isParamLocked(id), ("Failed to lock parameter: " + id).toRawUTF8());
+    }
+
+    p.setCurrentProgram(1);
+    p.setCurrentProgram(12);
+    for (int i = 0; i < params.size(); ++i) {
+        auto* rp = dynamic_cast<juce::RangedAudioParameter*>(params[i]);
+        require(std::abs(rp->getValue() - lockedValues[static_cast<std::size_t>(i)]) < 1.0e-5f,
+                ("Locked parameter changed on setCurrentProgram: " + rp->getParameterID()).toRawUTF8());
+    }
+
+    p.applyUserPreset(userPreset, "User Test");
+    for (int i = 0; i < params.size(); ++i) {
+        auto* rp = dynamic_cast<juce::RangedAudioParameter*>(params[i]);
+        require(std::abs(rp->getValue() - lockedValues[static_cast<std::size_t>(i)]) < 1.0e-5f,
+                ("Locked parameter changed on applyUserPreset: " + rp->getParameterID()).toRawUTF8());
+    }
+
+    juce::MemoryBlock state;
+    p.getStateInformation(state);
+    DelayProcessor restored;
+    restored.setStateInformation(state.getData(), static_cast<int>(state.getSize()));
+    const auto& restoredParams = restored.getParameters();
+    require(restoredParams.size() == params.size(), "Restored parameter count mismatch");
+    for (int i = 0; i < restoredParams.size(); ++i) {
+        auto* rp = dynamic_cast<juce::RangedAudioParameter*>(restoredParams[i]);
+        require(rp != nullptr && restored.isParamLocked(rp->getParameterID()),
+                ("Lock did not survive get/setStateInformation: " + rp->getParameterID()).toRawUTF8());
+        require(std::abs(rp->getValue() - lockedValues[static_cast<std::size_t>(i)]) < 1.0e-5f,
+                ("Locked value did not survive get/setStateInformation: " + rp->getParameterID() + " got=" + juce::String(rp->getValue()) + " expected=" + juce::String(lockedValues[static_cast<std::size_t>(i)])).toRawUTF8());
+    }
+
+    restored.unlockAllParams();
+    for (int i = 0; i < restoredParams.size(); ++i) {
+        auto* rp = dynamic_cast<juce::RangedAudioParameter*>(restoredParams[i]);
+        require(!restored.isParamLocked(rp->getParameterID()),
+                ("unlockAllParams failed for: " + rp->getParameterID()).toRawUTF8());
+    }
+}
+int main(int argc,char** argv){juce::ScopedJuceInitialiser_GUI gui;int errors=0;for(const auto& [name,test]:std::initializer_list<std::pair<const char*,void(*)()>>{{"sidechain buses, ducking, undo, A/B, presets",sidechainAndSuite},{"factory voices",factoryVoices},{"previous factory bank",previousFactoryBank},{"factory impulse responses and rhythms",bankAudio},{"filtered tap host tail",filteredTapTail},{"diffusion host tail",diffusionHostTail},{"paged layout and scale",pagedLayoutAndScale},{"host audio/bypass",audio},{"session recall",recall},{"typed values",typedValues},{"malformed parameter state",malformedState},{"preset while bypassed",presetWhileBypassed},{"parameter locking",parameterLocking}})try{test();std::cout<<"PASS "<<name<<'\n';}catch(const std::exception& e){std::cerr<<"FAIL "<<name<<": "<<e.what()<<'\n';++errors;}try{ui(juce::File::getCurrentWorkingDirectory().getChildFile(argc>1?argv[1]:"docs/screenshots"));std::cout<<"PASS native controls and actual editor screenshots\n";}catch(const std::exception& e){std::cerr<<"FAIL UI: "<<e.what()<<'\n';++errors;}return errors?1:0;}
