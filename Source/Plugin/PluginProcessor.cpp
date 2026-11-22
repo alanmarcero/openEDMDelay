@@ -2,8 +2,9 @@
 #include "PluginEditor.h"
 #include <algorithm>
 #include <cmath>
-#include <sstream>
 #include <locale>
+#include <map>
+#include <sstream>
 namespace oed {
 namespace {
 class ProgramEdit final:public juce::UndoableAction {
@@ -20,8 +21,8 @@ class PresetEdit final:public juce::UndoableAction {
 public:
     PresetEdit(DelayProcessor& owner,juce::MemoryBlock before,juce::MemoryBlock after)
         :owner(owner),before(std::move(before)),after(std::move(after)) {}
-    bool perform() override {return owner.restoreParameters(after.getData(),static_cast<int>(after.getSize()));}
-    bool undo() override {return owner.restoreParameters(before.getData(),static_cast<int>(before.getSize()));}
+    bool perform() override {return owner.restoreParameters(after.getData(),static_cast<int>(after.getSize()),true);}
+    bool undo() override {return owner.restoreParameters(before.getData(),static_cast<int>(before.getSize()),true);}
     int getSizeInUnits() override {return 8;}
 private:
     DelayProcessor& owner;juce::MemoryBlock before,after;
@@ -143,6 +144,36 @@ juce::AudioProcessorEditor* DelayProcessor::createEditor(){return new DelayEdito
 void DelayProcessor::setPlainValue(int id,float value) {
     auto* p=parameters.getParameter(parameterSpecs()[static_cast<std::size_t>(id)].id);
     p->setValueNotifyingHost(p->convertTo0to1(value));
+}
+void DelayProcessor::setPlainValueIfUnlocked(int id,float value) {
+    if(!paramLocks[static_cast<std::size_t>(id)].load(std::memory_order_relaxed))
+        setPlainValue(id,value);
+}
+namespace {
+int paramIndexForId(const juce::String& id) {
+    static const auto lookup=[] {
+        std::map<juce::String,int> map;
+        const auto& specs=parameterSpecs();
+        for(std::size_t i=0;i<specs.size();++i) map.emplace(specs[i].id,static_cast<int>(i));
+        return map;
+    }();
+    const auto it=lookup.find(id);
+    return it!=lookup.end()?it->second:-1;
+}
+}
+bool DelayProcessor::isParamLocked(const juce::String& paramId) const {
+    const int idx=paramIndexForId(paramId);
+    return idx>=0&&paramLocks[static_cast<std::size_t>(idx)].load(std::memory_order_relaxed);
+}
+void DelayProcessor::setParamLocked(const juce::String& paramId,bool locked) {
+    const int idx=paramIndexForId(paramId);
+    if(idx>=0) paramLocks[static_cast<std::size_t>(idx)].store(locked,std::memory_order_relaxed);
+}
+void DelayProcessor::unlockAllParams() {
+    for(auto& lock:paramLocks) lock.store(false,std::memory_order_relaxed);
+}
+bool DelayProcessor::hasAnyLockedParam() const {
+    return std::any_of(paramLocks.begin(),paramLocks.end(),[](const auto& lock){return lock.load(std::memory_order_relaxed);});
 }
 namespace {
 struct Hit { int step=0, level=0, pan=0; };
@@ -281,10 +312,10 @@ void DelayProcessor::applyPattern(int index) {
     for(int i=0;i<tapCount;++i) {
         const auto hit=pattern.taps[static_cast<std::size_t>(i)];
         const int id=baseCount+i*4;
-        setPlainValue(id,hit.step>0?1.f:0.f);
-        setPlainValue(id+1,static_cast<float>(std::max(1,hit.step)));
-        setPlainValue(id+2,static_cast<float>(hit.step?hit.level:70));
-        setPlainValue(id+3,static_cast<float>(hit.pan));
+        setPlainValueIfUnlocked(id,hit.step>0?1.f:0.f);
+        setPlainValueIfUnlocked(id+1,static_cast<float>(std::max(1,hit.step)));
+        setPlainValueIfUnlocked(id+2,static_cast<float>(hit.step?hit.level:70));
+        setPlainValueIfUnlocked(id+3,static_cast<float>(hit.pan));
     }
     history.endGesture();
 }
@@ -298,16 +329,16 @@ void DelayProcessor::setCurrentProgram(int index) {
     history.beginGesture();
     history.addAction(new ProgramEdit(*this,previous,index,previousLegacy,false));
     const auto& sound=bank[index];
-    for(int i=0;i<parameterCount;++i) setPlainValue(i,parameterSpecs()[static_cast<std::size_t>(i)].initial);
+    for(int i=0;i<parameterCount;++i) setPlainValueIfUnlocked(i,parameterSpecs()[static_cast<std::size_t>(i)].initial);
     applyPattern(sound.rhythm);
-    setPlainValue(gridRate,static_cast<float>(sound.grid));
-    setPlainValue(routing,static_cast<float>(sound.stereo));
-    setPlainValue(character,static_cast<float>(sound.texture));
-    setPlainValue(feedback,static_cast<float>(sound.loop));
-    setPlainValue(mix,static_cast<float>(sound.wet));
-    setPlainValue(highPass,static_cast<float>(sound.hp));
-    setPlainValue(lowPass,static_cast<float>(sound.lp));
-    for(auto [id,value]:sound.controls) setPlainValue(id,value);
+    setPlainValueIfUnlocked(gridRate,static_cast<float>(sound.grid));
+    setPlainValueIfUnlocked(routing,static_cast<float>(sound.stereo));
+    setPlainValueIfUnlocked(character,static_cast<float>(sound.texture));
+    setPlainValueIfUnlocked(feedback,static_cast<float>(sound.loop));
+    setPlainValueIfUnlocked(mix,static_cast<float>(sound.wet));
+    setPlainValueIfUnlocked(highPass,static_cast<float>(sound.hp));
+    setPlainValueIfUnlocked(lowPass,static_cast<float>(sound.lp));
+    for(auto [id,value]:sound.controls) setPlainValueIfUnlocked(id,value);
     recallProgram(index,false);
     resetPending.store(true);
     history.endGesture();
@@ -331,7 +362,7 @@ juce::MemoryBlock DelayProcessor::captureState() {
     state.setProperty("presetName",presetName,nullptr);state.setProperty("presetModified",presetModified,nullptr);
     juce::MemoryBlock block;if(auto xml=state.createXml()) copyXmlToBinary(*xml,block);return block;
 }
-bool DelayProcessor::restoreParameters(const void* data,int size) {
+bool DelayProcessor::restoreParameters(const void* data,int size,bool preserveLocked) {
     auto xml=getXmlFromBinary(data,size);
     if(xml==nullptr||!xml->hasTagName(parameters.state.getType())) return false;
     xml->removeAttribute("abA");xml->removeAttribute("abB");xml->removeAttribute("abActive");
@@ -350,6 +381,18 @@ bool DelayProcessor::restoreParameters(const void* data,int size) {
             if(index<swing) return false;
             juce::ValueTree child("PARAM");child.setProperty("id",spec.id,nullptr);child.setProperty("value",spec.initial,nullptr);state.appendChild(child,nullptr);
         } else if(matches!=1) return false;
+    }
+    if(preserveLocked) {
+        for(std::size_t i=0;i<parameterCount;++i) {
+            if(!paramLocks[i].load(std::memory_order_relaxed)) continue;
+            const auto& id=parameterSpecs()[i].id;
+            for(auto child:state) {
+                if(child.getProperty("id").toString()==id) {
+                    child.setProperty("value",static_cast<double>(values[i]->load()),nullptr);
+                    break;
+                }
+            }
+        }
     }
     {
         suite::SuspendUndo pause(history);
@@ -385,6 +428,11 @@ void DelayProcessor::getStateInformation(juce::MemoryBlock& block) {
         xml->setAttribute("abB",ab.slot(1).toBase64Encoding());
         xml->setAttribute("editorWidth",editorWidth.load(std::memory_order_relaxed));
         xml->setAttribute("editorHeight",editorHeight.load(std::memory_order_relaxed));
+        juce::StringArray lockedIds;
+        for(std::size_t i=0;i<parameterCount;++i)
+            if(paramLocks[i].load(std::memory_order_relaxed))
+                lockedIds.add(parameterSpecs()[i].id);
+        if(!lockedIds.isEmpty()) xml->setAttribute("lockedParams",lockedIds.joinIntoString(","));
         copyXmlToBinary(*xml,block);
     }
 }
@@ -400,7 +448,12 @@ void DelayProcessor::setStateInformation(const void* data,int size) {
         editorWidth.store(juce::jlimit(840,1920,xml->getIntAttribute("editorWidth",1200)),std::memory_order_relaxed);
         editorHeight.store(juce::jlimit(595,1360,xml->getIntAttribute("editorHeight",850)),std::memory_order_relaxed);
     }
-    if(!restoreParameters(data,size)) return;
+    if(!restoreParameters(data,size,false)) return;
+    unlockAllParams();
+    if(xml->hasAttribute("lockedParams")) {
+        const auto lockedIds=juce::StringArray::fromTokens(xml->getStringAttribute("lockedParams"),",","");
+        for(const auto& id:lockedIds) setParamLocked(id,true);
+    }
     if(slotsOk) ab.setSlots(std::move(slotA),std::move(slotB),slotIndex);
     else ab.seed();
     history.clearSlot(0);history.clearSlot(1);history.selectSlot(ab.active());

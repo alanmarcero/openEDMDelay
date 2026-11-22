@@ -27,9 +27,12 @@ public:
 private:
     void timerCallback() override;
     void paintContent(juce::Graphics&);
+    void paintLockIndicators(juce::Graphics&);
+    void showLockMenu(int paramIndex);
     struct Content final:juce::Component {
         explicit Content(DelayEditor& editor):owner(editor) {}
         void paint(juce::Graphics& g) override {owner.paintContent(g);}
+        void paintOverChildren(juce::Graphics& g) override {owner.paintLockIndicators(g);}
         DelayEditor& owner;
     };
     void place(int,juce::Rectangle<int>,bool label=true);
@@ -63,5 +66,6 @@ private:
     float meterPeakHoldDb=-60.0f;
     float meterPeakHoldTimer=0.0f;
     bool meterClipped=false;
+    std::array<bool,parameterCount> shownLocks{};
 };
 }
