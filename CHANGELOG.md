@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.8.2
+
+- **Parameter Locking:** Add per-parameter locking across every plugin parameter, persisted in session state and preserved across preset loads and randomization.
+
 ## v1.8.1
 
 - **UI & Suite Fixes:** UI polish, paged lower panels, wheel-safe scroll, engine-accurate dimming, synced preset pickers, feedback-accurate echoes, fixed-aspect scaling, centre-out pan, dBFS output meter, and screen-reader titles.
