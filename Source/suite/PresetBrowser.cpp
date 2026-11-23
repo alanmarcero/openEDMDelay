@@ -6,7 +6,9 @@ PresetBrowser::PresetBrowser(juce::File pluginRoot, PresetHandlers handlersIn)
     : presets(std::move(pluginRoot)), handlers(std::move(handlersIn)) {
     search.setComponentID("presetSearch");
     search.setTitle("Search presets");
-    search.setTextToShowWhenEmpty("Search", juce::Colour(0xff869ca8));
+    search.setFont(juce::FontOptions(14.5f));
+    search.setJustification(juce::Justification::centredLeft);
+    search.setTextToShowWhenEmpty("Search", juce::Colour(0xffb4c8d4));
     search.setTooltip("Find a factory or user preset by name.");
     search.onTextChange = [this] { rebuild(); };
     addAndMakeVisible(search);

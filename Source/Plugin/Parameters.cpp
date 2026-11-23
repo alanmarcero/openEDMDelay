@@ -49,7 +49,7 @@ const std::array<ParameterSpec,parameterCount>& parameterSpecs() {
             a[p+2]={prefix+"Filter",title+"filter",0,1,0,1,"Off|On",""};
             a[p+3]={prefix+"HighPass",title+"HP",20,20000,20,.25f,"","Hz"};
             a[p+4]={prefix+"LowPass",title+"LP",20,20000,20000,.25f,"","Hz"};
-            a[p+5]={prefix+"Character",title+"colour",0,3,0,1,"Digital|Tape|BBD|Lo-fi",""};
+            a[p+5]={prefix+"Character",title+"color",0,3,0,1,"Digital|Tape|BBD|Lo-fi",""};
             a[p+6]={prefix+"Drive",title+"drive",0,100,25,1,"","%"};
             a[p+7]={prefix+"MorphStep",title+"target",1,16,static_cast<float>(steps[i]),1,"",""};
         }

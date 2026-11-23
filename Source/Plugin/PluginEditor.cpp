@@ -9,7 +9,7 @@ namespace {
 
 constexpr int kDesignWidth = 1200;
 constexpr int kDesignHeight = 850;
-constexpr float kInactiveAlpha = 0.40f;
+constexpr float kInactiveAlpha = 0.48f;
 const juce::Rectangle<int> kMeterBarBounds{925, 638, 235, 10};
 const juce::Rectangle<int> kMeterPanelArea{920, 614, 246, 38};
 
@@ -407,7 +407,7 @@ DelayEditor::~DelayEditor() {
 
 void DelayEditor::makeControl(int i) {
     static constexpr const char* kTapExtraLabels[tapExtraCount]{
-        "Chance", "Ratchets", "Filter", "HP", "LP", "Colour", "Drive", "Target"
+        "Chance", "Ratchets", "Filter", "HP", "LP", "Color", "Drive", "Target"
     };
     const auto& spec = parameterSpecs()[static_cast<std::size_t>(i)];
     const auto colour = i >= baseCount ? accent((i - baseCount) / 4) : (i == highPass || i == hpSlope ? theme::kAccentA : theme::kAccentB);
@@ -470,7 +470,7 @@ void DelayEditor::makeControl(int i) {
     }
     if (i == drive || i == motion || i == wobbleRate) {
         c->setSliderStyle(juce::Slider::LinearHorizontal);
-        c->setTextBoxStyle(juce::Slider::TextBoxRight, false, i == wobbleRate ? 58 : 38, 22);
+        c->setTextBoxStyle(juce::Slider::TextBoxRight, false, i == wobbleRate ? 54 : 36, 22);
         c->setColour(juce::Slider::trackColourId, colour);
         c->setColour(juce::Slider::thumbColourId, colour);
     }
@@ -544,10 +544,10 @@ void DelayEditor::resized() {
 
     place(routing, {896, 202, 132, 36}, false);
     place(character, {1040, 202, 124, 36}, false);
-    place(drive, {901, 250, 119, 24});
-    place(motion, {1038, 250, 119, 24});
-    place(wobbleRate, {901, 304, 119, 30});
-    place(wobbleShape, {1038, 300, 124, 36});
+    place(drive, {896, 248, 128, 28});
+    place(motion, {1036, 248, 128, 28});
+    place(wobbleRate, {896, 303, 128, 30});
+    place(wobbleShape, {1036, 300, 128, 36});
 
     for (int i = 0; i < tapCount; ++i) {
         const int x = 31 + i * 145;
@@ -600,22 +600,24 @@ void DelayEditor::resized() {
     selectedTap.setVisible(showGroove);
     if (showGroove) {
         selectedTap.setBounds(702, 610, 176, 36);
-        place(swing, {32, 654, 80, 104});
-        place(groove, {118, 654, 96, 36});
-        place(freeze, {118, 722, 96, 36});
-        place(patternMorph, {220, 654, 80, 104});
+        place(swing, {30, 668, 80, 114});
+        place(groove, {114, 664, 102, 36});
+        place(freeze, {114, 736, 102, 36});
+        place(patternMorph, {220, 668, 80, 114});
     }
-    for (int tap = 0; tap < tapCount; ++tap) {
-        for (int field = 0; field < tapExtraCount; ++field) {
+    int tapFieldX = 331;
+    for (int field = 0; field < tapExtraCount; ++field) {
+        const bool isChoiceOrLinear = (field == 1 || field == 2 || field == 5 || field == 7);
+        const int fieldWidth = isChoiceOrLinear ? 60 : 70;
+        for (int tap = 0; tap < tapCount; ++tap) {
             const int id = tapExtraStart + tap * tapExtraCount + field;
             const bool visible = showGroove && (tap == selectedTap.getSelectedId() - 1);
             controls[static_cast<std::size_t>(id)]->setVisible(visible);
             labels[static_cast<std::size_t>(id)]->setVisible(visible);
-            if (visible) {
-                const bool isChoiceOrLinear = (field == 1 || field == 2 || field == 5 || field == 7);
-                place(id, {330 + field * 69, isChoiceOrLinear ? 690 : 656, 65, isChoiceOrLinear ? 36 : 100});
-            }
+            if (visible)
+                place(id, {tapFieldX, isChoiceOrLinear ? 698 : 668, fieldWidth, isChoiceOrLinear ? 36 : 114});
         }
+        tapFieldX += fieldWidth + 4;
     }
 
     // Page 2: FX & Glitch.
@@ -739,7 +741,7 @@ void DelayEditor::paintContent(juce::Graphics& g) {
         const juce::String grText = (std::abs(grDb) < 0.05f) ? "GR 0.0 dB" : ("GR " + juce::String(grDb, 1) + " dB");
         text(g, grText, {768, 612, 110, 20}, 10.5f, theme::kAccentFx, true, juce::Justification::centredRight);
         text(g, "SOURCE", {622, 628, 124, 14}, 10.0f, theme::kTextDim, true, juce::Justification::centred);
-        const juce::String duckRateCaption = (s.duckSource == DuckSource::beat) ? "RATE" : "RELEASE";
+        const juce::String duckRateCaption = (s.duckSource == DuckSource::beat) ? "BEAT RATE" : "AUDIO RELEASE";
         text(g, duckRateCaption, {754, 628, 124, 14}, 10.0f, theme::kTextDim, true, juce::Justification::centred);
 
         const auto area = scopeFrame.getBounds().toFloat();
@@ -785,9 +787,11 @@ void DelayEditor::paintContent(juce::Graphics& g) {
     if (lowerPage == 2) {
         panel(g, {20, 600, 300, 230}, "DIFFUSION & SHIMMER", theme::kAccentA);
         panel(g, {335, 600, 555, 230}, "GLITCH & REVERSE", theme::kAccentFx);
+        if (s.glitch == Glitch::off)
+            text(g, "Pick a Glitch mode to activate", {364, 630, 260, 16}, 11.0f, theme::kTextDim.brighter(0.25f));
         text(g, "GLITCH", {352, 648, 104, 14}, 10.0f, theme::kTextDim, true, juce::Justification::centred);
         text(g, "RATE", {352, 718, 104, 14}, 10.0f, theme::kTextDim, true, juce::Justification::centred);
-        text(g, "RATE", {684, 648, 140, 14}, 10.0f, theme::kTextDim, true, juce::Justification::centred);
+        text(g, "REVERSE LENGTH", {684, 648, 140, 14}, 10.0f, theme::kTextDim, true, juce::Justification::centred);
     }
 
     // Pinned OUTPUT panel and dBFS meter with 1 s peak hold + click-to-clear clip latch.
@@ -811,7 +815,7 @@ void DelayEditor::paintContent(juce::Graphics& g) {
         g.fillRect(holdX - 1.0f, bar.getY() - 1.0f, 2.0f, bar.getHeight() + 2.0f);
     }
 
-    text(g, "BEAT SYNC ONLY   /   T = triplet   /   D = dotted", {25, 832, 470, 18}, 10.0f, theme::kTextDim);
+    text(g, "BEAT SYNC ONLY   /   T = triplet   /   D = dotted", {25, 831, 520, 18}, 11.5f, theme::kText.withAlpha(0.78f));
     text(g, "ALAN MARCERO  /  openEDM  /  v" JucePlugin_VersionString, {880, 832, 297, 18}, 10.0f, theme::kTextDim,
          false, juce::Justification::centredRight);
 }
@@ -996,6 +1000,8 @@ void DelayEditor::timerCallback() {
     if (lowerPage == 0) {
         content.repaint(scopeFrame.getBounds());
         content.repaint(752, 610, 128, 34);
+    } else if (lowerPage == 2) {
+        content.repaint(360, 626, 270, 22);
     }
 }
 

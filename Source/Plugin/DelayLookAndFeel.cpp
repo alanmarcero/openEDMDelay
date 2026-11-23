@@ -90,19 +90,21 @@ void DelayLookAndFeel::drawLinearSlider(juce::Graphics& g, int x, int y, int wid
         const auto box = bounds.reduced(0.5f);
         g.setColour(theme::kKnobBody.withMultipliedAlpha(alpha));
         g.fillRoundedRectangle(box, kCornerRadius);
-        g.setColour(accent.withAlpha((slider.isMouseOver(true) ? 0.9f : 0.45f) * alpha));
+        g.setColour(accent.withAlpha((slider.isMouseOver(true) ? 0.9f : 0.55f) * alpha));
         g.drawRoundedRectangle(box, kCornerRadius, 1.0f);
-        g.setColour(theme::kTextDim.withMultipliedAlpha(alpha));
-        g.setFont(juce::FontOptions(9.0f, juce::Font::bold));
-        g.drawText("STEP", box.withHeight(12.0f).translated(0.0f, 2.0f), juce::Justification::centred);
+        g.setColour(theme::kText.withAlpha(0.82f).withMultipliedAlpha(alpha));
+        g.setFont(juce::FontOptions(10.5f, juce::Font::bold));
+        g.drawText("STEP", box.withHeight(13.0f).translated(0.0f, 1.5f), juce::Justification::centred);
         return;
     }
 
-    const float trackHeight = 4.0f;
-    const auto track = juce::Rectangle<float>(bounds.getX() + 4.0f, bounds.getCentreY() - trackHeight * 0.5f,
-                                              juce::jmax(1.0f, bounds.getWidth() - 8.0f), trackHeight);
-    g.setColour(theme::kTrack.withMultipliedAlpha(alpha));
-    g.fillRoundedRectangle(track, 2.0f);
+    const float trackHeight = 5.5f;
+    const auto track = juce::Rectangle<float>(bounds.getX() + 6.0f, bounds.getCentreY() - trackHeight * 0.5f,
+                                              juce::jmax(1.0f, bounds.getWidth() - 12.0f), trackHeight);
+    g.setColour(theme::kBackground.withMultipliedAlpha(0.85f * alpha));
+    g.fillRoundedRectangle(track, 2.75f);
+    g.setColour(theme::kPanelEdge.brighter(0.35f).withMultipliedAlpha(alpha));
+    g.drawRoundedRectangle(track, 2.75f, 1.0f);
 
     const bool isBipolar = juce::approximatelyEqual(slider.getMinimum(), -slider.getMaximum());
     const float originX = isBipolar ? track.getCentreX() : track.getX();
@@ -111,19 +113,19 @@ void DelayLookAndFeel::drawLinearSlider(juce::Graphics& g, int x, int y, int wid
     const float fillWidth = std::abs(clampedPos - originX);
     if (fillWidth > 0.5f) {
         g.setColour(accent);
-        g.fillRoundedRectangle(fillLeft, track.getY(), fillWidth, trackHeight, 2.0f);
+        g.fillRoundedRectangle(fillLeft, track.getY(), fillWidth, trackHeight, 2.75f);
     }
 
     if (isBipolar) {
-        g.setColour(theme::kTextDim.withAlpha(0.5f * alpha));
+        g.setColour(theme::kTextDim.withAlpha(0.55f * alpha));
         g.drawVerticalLine(static_cast<int>(track.getCentreX()), track.getY() - 2.0f, track.getBottom() + 2.0f);
     }
 
-    const float thumbRadius = 5.0f;
+    const float thumbRadius = 6.0f;
     g.setColour(accent);
     g.fillEllipse(clampedPos - thumbRadius, track.getCentreY() - thumbRadius, thumbRadius * 2.0f, thumbRadius * 2.0f);
     g.setColour(theme::kText.withMultipliedAlpha(alpha));
-    g.drawEllipse(clampedPos - thumbRadius, track.getCentreY() - thumbRadius, thumbRadius * 2.0f, thumbRadius * 2.0f, 1.0f);
+    g.drawEllipse(clampedPos - thumbRadius, track.getCentreY() - thumbRadius, thumbRadius * 2.0f, thumbRadius * 2.0f, 1.5f);
 }
 
 void DelayLookAndFeel::drawComboBox(juce::Graphics& g, int width, int height, bool, int, int, int, int,
@@ -209,7 +211,7 @@ juce::Label* DelayLookAndFeel::createSliderTextBox(juce::Slider& slider) {
 juce::Slider::SliderLayout DelayLookAndFeel::getSliderLayout(juce::Slider& slider) {
     auto layout = LookAndFeel_V4::getSliderLayout(slider);
     if (slider.getSliderStyle() == juce::Slider::LinearBar)
-        layout.textBoxBounds = layout.sliderBounds.withTrimmedTop(12);
+        layout.textBoxBounds = layout.sliderBounds.withTrimmedTop(13);
     return layout;
 }
 
