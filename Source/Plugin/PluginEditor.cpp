@@ -9,7 +9,7 @@ namespace {
 
 constexpr int kDesignWidth = 1200;
 constexpr int kDesignHeight = 850;
-constexpr float kInactiveAlpha = 0.48f;
+constexpr float kInactiveAlpha = 0.62f;
 const juce::Rectangle<int> kMeterBarBounds{925, 638, 235, 10};
 const juce::Rectangle<int> kMeterPanelArea{920, 614, 246, 38};
 
@@ -224,7 +224,7 @@ void TapGrid::paint(juce::Graphics& g) {
             g.drawRoundedRectangle(x - 5.0f, y - radius, 10.0f, radius * 2.0f, 3.0f, 1.0f);
         }
     }
-    text(g, "DRAG: time + level    /    RIGHT-CLICK: mute", {32, getHeight() - 19, getWidth() - 40, 18}, 10.0f, theme::kTextDim);
+    text(g, "DRAG: time + level / RIGHT-CLICK: mute", {32, getHeight() - 19, getWidth() - 40, 18}, 10.0f, theme::kTextDim);
 }
 
 void TapGrid::mouseDown(const juce::MouseEvent& e) {
@@ -382,6 +382,7 @@ DelayEditor::DelayEditor(DelayProcessor& p) : AudioProcessorEditor(p), owner(p),
             syncPresetDisplay();
         }
     });
+    browser->setListVisible(false);
     content.addAndMakeVisible(*browser);
 
     scopeFrame.setComponentID("sidechainScope");
@@ -476,7 +477,7 @@ void DelayEditor::makeControl(int i) {
     }
     if (pan) {
         c->setSliderStyle(juce::Slider::LinearHorizontal);
-        c->setTextBoxStyle(juce::Slider::TextBoxBelow, false, 70, 16);
+        c->setTextBoxStyle(juce::Slider::TextBoxBelow, false, 70, 18);
         c->setColour(juce::Slider::trackColourId, colour);
         c->setColour(juce::Slider::thumbColourId, colour);
     }
@@ -555,7 +556,7 @@ void DelayEditor::resized() {
         place(p, {x + 2, 386, 66, 36}, false);
         place(p + 1, {x + 70, 386, 74, 36}, false);
         place(p + 2, {x + 26, 424, 88, 88}, false);
-        place(p + 3, {x + 13, 514, 116, 34}, false);
+        place(p + 3, {x + 13, 514, 116, 36}, false);
     }
 
     pageMain.setBounds(20, 558, 130, 36);
@@ -685,11 +686,11 @@ void DelayEditor::paintContent(juce::Graphics& g) {
     const bool synced = owner.hostSync.load();
     g.setColour(synced ? theme::kAccentA : theme::kAccentB);
     g.fillEllipse(443.0f, 32.0f, 6.0f, 6.0f);
-    text(g, juce::String(owner.displayedBpm.load(), 1) + " BPM  /  " + (synced ? "HOST" : "INTERNAL"),
+    text(g, juce::String(owner.displayedBpm.load(), 1) + " BPM / " + (synced ? "HOST" : "INTERNAL"),
          {458, 22, 175, 29}, 12.5f, theme::kTextDim);
 
     panel(g, {20, 100, 840, 274}, "TAP FIELD", theme::kAccentA);
-    text(g, "16 STEPS  /  8 VOICES", {344, 114, 235, 20}, 10.5f, theme::kTextDim);
+    text(g, "16 STEPS / 8 VOICES", {344, 114, 235, 20}, 11.5f, theme::kTextDim);
 
     panel(g, {880, 100, 300, 274}, "", theme::kAccentB);
     g.setColour(theme::kBackground);
@@ -720,8 +721,8 @@ void DelayEditor::paintContent(juce::Graphics& g) {
             g.setColour(theme::kPanelEdge.withAlpha(0.6f));
             g.drawVerticalLine(x - 6, 394, 540);
         }
-        text(g, "L", {x + 2, 514, 13, 18}, 9.0f, theme::kTextDim);
-        text(g, "R", {x + 128, 514, 13, 18}, 9.0f, theme::kTextDim);
+        text(g, "L", {x, 513, 15, 19}, 11.0f, theme::kText.withAlpha(0.82f));
+        text(g, "R", {x + 127, 513, 15, 19}, 11.0f, theme::kText.withAlpha(0.82f));
     }
 
     const auto s = owner.settings();
@@ -731,7 +732,7 @@ void DelayEditor::paintContent(juce::Graphics& g) {
         text(g, "STEP LENGTH", {177, 642, 106, 22}, 10.0f, theme::kTextDim);
 
         panel(g, {315, 600, 280, 230}, "ECHO FILTERS", theme::kAccentB);
-        text(g, "IN THE FEEDBACK LOOP", {335, 628, 236, 16}, 10.0f, theme::kTextDim);
+        text(g, "IN THE FEEDBACK LOOP", {344, 628, 236, 16}, 11.5f, theme::kText.withAlpha(0.75f));
         text(g, "SLOPE", {332, 768, 117, 14}, 10.0f, theme::kTextDim, true, juce::Justification::centred);
         text(g, "SLOPE", {460, 768, 117, 14}, 10.0f, theme::kTextDim, true, juce::Justification::centred);
 
@@ -739,7 +740,7 @@ void DelayEditor::paintContent(juce::Graphics& g) {
         const float duckGain = juce::jlimit(1.0e-4f, 1.0f, owner.duckMeter.load());
         const float grDb = 20.0f * std::log10(duckGain);
         const juce::String grText = (std::abs(grDb) < 0.05f) ? "GR 0.0 dB" : ("GR " + juce::String(grDb, 1) + " dB");
-        text(g, grText, {768, 612, 110, 20}, 10.5f, theme::kAccentFx, true, juce::Justification::centredRight);
+        text(g, grText, {760, 612, 116, 22}, 12.0f, theme::kAccentFx, true, juce::Justification::centredRight);
         text(g, "SOURCE", {622, 628, 124, 14}, 10.0f, theme::kTextDim, true, juce::Justification::centred);
         const juce::String duckRateCaption = (s.duckSource == DuckSource::beat) ? "BEAT RATE" : "AUDIO RELEASE";
         text(g, duckRateCaption, {754, 628, 124, 14}, 10.0f, theme::kTextDim, true, juce::Justification::centred);
@@ -778,7 +779,7 @@ void DelayEditor::paintContent(juce::Graphics& g) {
         g.drawVerticalLine(static_cast<int>(headX), area.getY() + 1.0f, area.getBottom() - 1.0f);
         const juce::String scopeCaption = (s.duckSource == DuckSource::beat) ? "BEAT DUCK"
             : (s.duckSource == DuckSource::input ? "INPUT DUCK" : "SIDECHAIN");
-        text(g, scopeCaption, {static_cast<int>(area.getX()) + 6, static_cast<int>(area.getBottom()) - 13, 78, 12}, 9.0f, theme::kTextDim);
+        text(g, scopeCaption, {static_cast<int>(area.getX()) + 6, static_cast<int>(area.getBottom()) - 15, 96, 14}, 10.5f, theme::kText.withAlpha(0.78f));
     }
     if (lowerPage == 1) {
         panel(g, {20, 600, 290, 230}, "GROOVE & HOLD", theme::kAccentA);
@@ -797,7 +798,7 @@ void DelayEditor::paintContent(juce::Graphics& g) {
     // Pinned OUTPUT panel and dBFS meter with 1 s peak hold + click-to-clear clip latch.
     panel(g, {905, 600, 275, 230}, "OUTPUT", theme::kAccentOut);
     const juce::String meterLabel = meterClipped ? "CLIP" : (meterDb <= -59.5f ? "-inf dB" : juce::String(meterDb, 1) + " dB");
-    text(g, meterLabel, {1060, 616, 100, 18}, 10.0f, meterClipped ? juce::Colour(0xffff5544) : theme::kTextDim,
+    text(g, meterLabel, {1054, 612, 110, 22}, 12.0f, meterClipped ? juce::Colour(0xffff5544) : theme::kText.withAlpha(0.82f),
          meterClipped, juce::Justification::centredRight);
 
     const float meterNorm = juce::jlimit(0.0f, 1.0f, (meterDb + 60.0f) / 60.0f);
@@ -815,8 +816,8 @@ void DelayEditor::paintContent(juce::Graphics& g) {
         g.fillRect(holdX - 1.0f, bar.getY() - 1.0f, 2.0f, bar.getHeight() + 2.0f);
     }
 
-    text(g, "BEAT SYNC ONLY   /   T = triplet   /   D = dotted", {25, 831, 520, 18}, 11.5f, theme::kText.withAlpha(0.78f));
-    text(g, "ALAN MARCERO  /  openEDM  /  v" JucePlugin_VersionString, {880, 832, 297, 18}, 10.0f, theme::kTextDim,
+    text(g, "BEAT SYNC ONLY / T = triplet / D = dotted", {25, 831, 520, 18}, 11.5f, theme::kText.withAlpha(0.78f));
+    text(g, "ALAN MARCERO / openEDM / v" JucePlugin_VersionString, {850, 831, 327, 18}, 11.5f, theme::kText.withAlpha(0.72f),
          false, juce::Justification::centredRight);
 }
 

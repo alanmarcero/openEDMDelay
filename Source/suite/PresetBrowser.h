@@ -24,6 +24,7 @@ public:
     void resized() override;
 
     void setSearch(const juce::String& text);
+    void setListVisible(bool visible);
     void saveCurrent();
     bool renameSelected();
     bool deleteSelected();
@@ -63,6 +64,7 @@ private:
     juce::TextButton favorite{"Fav"}, save{"Save"}, rename{"Rename"}, remove{"Delete"};
     std::vector<Row> shown;
     juce::String selectedKey;
+    bool listVisible = true;
     bool rebuilding = false;
     bool confirmingReplace = false;
     bool confirmingDelete = false;

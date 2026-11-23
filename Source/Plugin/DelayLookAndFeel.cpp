@@ -8,6 +8,7 @@ namespace {
 constexpr float kArcThickness = 3.5f;
 constexpr float kCornerRadius = 4.0f;
 constexpr float kControlFontSize = 14.0f;
+constexpr float kDisabledAlpha = 0.55f;
 
 } // namespace
 
@@ -41,7 +42,7 @@ DelayLookAndFeel::DelayLookAndFeel() {
 
 void DelayLookAndFeel::drawRotarySlider(juce::Graphics& g, int x, int y, int width, int height, float sliderPos,
                                       float startAngle, float endAngle, juce::Slider& slider) {
-    const float alpha = slider.isEnabled() ? 1.0f : 0.35f;
+    const float alpha = slider.isEnabled() ? 1.0f : kDisabledAlpha;
     const auto accent = slider.findColour(juce::Slider::rotarySliderFillColourId).withMultipliedAlpha(alpha);
     const auto bounds = juce::Rectangle<int>(x, y, width, height).toFloat().reduced(4.0f);
     const float radius = juce::jmin(bounds.getWidth(), bounds.getHeight()) / 2.0f;
@@ -82,7 +83,7 @@ void DelayLookAndFeel::drawRotarySlider(juce::Graphics& g, int x, int y, int wid
 
 void DelayLookAndFeel::drawLinearSlider(juce::Graphics& g, int x, int y, int width, int height, float sliderPos,
                                       float, float, juce::Slider::SliderStyle style, juce::Slider& slider) {
-    const float alpha = slider.isEnabled() ? 1.0f : 0.35f;
+    const float alpha = slider.isEnabled() ? 1.0f : kDisabledAlpha;
     const auto accent = slider.findColour(juce::Slider::trackColourId).withMultipliedAlpha(alpha);
     const auto bounds = juce::Rectangle<int>(x, y, width, height).toFloat();
 
@@ -92,9 +93,9 @@ void DelayLookAndFeel::drawLinearSlider(juce::Graphics& g, int x, int y, int wid
         g.fillRoundedRectangle(box, kCornerRadius);
         g.setColour(accent.withAlpha((slider.isMouseOver(true) ? 0.9f : 0.55f) * alpha));
         g.drawRoundedRectangle(box, kCornerRadius, 1.0f);
-        g.setColour(theme::kText.withAlpha(0.82f).withMultipliedAlpha(alpha));
-        g.setFont(juce::FontOptions(10.5f, juce::Font::bold));
-        g.drawText("STEP", box.withHeight(13.0f).translated(0.0f, 1.5f), juce::Justification::centred);
+        g.setColour(theme::kText.withAlpha(0.92f).withMultipliedAlpha(alpha));
+        g.setFont(juce::FontOptions(11.5f, juce::Font::bold));
+        g.drawText("STEP", box.withHeight(15.0f).translated(0.0f, 1.5f), juce::Justification::centred);
         return;
     }
 
@@ -130,7 +131,7 @@ void DelayLookAndFeel::drawLinearSlider(juce::Graphics& g, int x, int y, int wid
 
 void DelayLookAndFeel::drawComboBox(juce::Graphics& g, int width, int height, bool, int, int, int, int,
                                   juce::ComboBox& box) {
-    const float alpha = box.isEnabled() ? 1.0f : 0.35f;
+    const float alpha = box.isEnabled() ? 1.0f : kDisabledAlpha;
     const auto bounds = juce::Rectangle<int>(width, height).toFloat().reduced(0.5f);
     g.setColour(box.findColour(juce::ComboBox::backgroundColourId).withMultipliedAlpha(alpha));
     g.fillRoundedRectangle(bounds, kCornerRadius);
@@ -155,7 +156,7 @@ void DelayLookAndFeel::drawLabel(juce::Graphics& g, juce::Label& label) {
         LookAndFeel_V4::drawLabel(g, label);
         return;
     }
-    g.beginTransparencyLayer(0.35f);
+    g.beginTransparencyLayer(kDisabledAlpha);
     LookAndFeel_V4::drawLabel(g, label);
     g.endTransparencyLayer();
 }
@@ -167,7 +168,7 @@ void DelayLookAndFeel::positionComboBoxText(juce::ComboBox& box, juce::Label& la
 
 void DelayLookAndFeel::drawButtonBackground(juce::Graphics& g, juce::Button& button, const juce::Colour&,
                                           bool isHighlighted, bool) {
-    const float alpha = button.isEnabled() ? 1.0f : 0.35f;
+    const float alpha = button.isEnabled() ? 1.0f : kDisabledAlpha;
     const auto bounds = button.getLocalBounds().toFloat().reduced(0.5f);
     const auto accent = button.findColour(juce::TextButton::buttonOnColourId);
     const bool isOn = button.getToggleState();
@@ -179,7 +180,7 @@ void DelayLookAndFeel::drawButtonBackground(juce::Graphics& g, juce::Button& but
 }
 
 void DelayLookAndFeel::drawButtonText(juce::Graphics& g, juce::TextButton& button, bool, bool) {
-    const float alpha = button.isEnabled() ? 1.0f : 0.35f;
+    const float alpha = button.isEnabled() ? 1.0f : kDisabledAlpha;
     const bool isOn = button.getToggleState();
     g.setColour(button.findColour(isOn ? juce::TextButton::textColourOnId : juce::TextButton::textColourOffId).withMultipliedAlpha(alpha));
     g.setFont(juce::FontOptions(kControlFontSize, juce::Font::bold));
@@ -202,7 +203,12 @@ juce::Font DelayLookAndFeel::getPopupMenuFont() {
 
 juce::Label* DelayLookAndFeel::createSliderTextBox(juce::Slider& slider) {
     auto* label = LookAndFeel_V4::createSliderTextBox(slider);
-    label->setFont(juce::FontOptions(11.5f));
+    if (slider.getSliderStyle() == juce::Slider::LinearBar)
+        label->setFont(juce::FontOptions(13.5f, juce::Font::bold));
+    else if (slider.getSliderStyle() == juce::Slider::LinearHorizontal && slider.getTextBoxPosition() == juce::Slider::TextBoxBelow)
+        label->setFont(juce::FontOptions(12.5f, juce::Font::bold));
+    else
+        label->setFont(juce::FontOptions(11.5f));
     label->setColour(juce::Label::outlineColourId,juce::Colours::transparentBlack);
     label->setColour(juce::Label::backgroundColourId,juce::Colours::transparentBlack);
     return label;
@@ -211,7 +217,7 @@ juce::Label* DelayLookAndFeel::createSliderTextBox(juce::Slider& slider) {
 juce::Slider::SliderLayout DelayLookAndFeel::getSliderLayout(juce::Slider& slider) {
     auto layout = LookAndFeel_V4::getSliderLayout(slider);
     if (slider.getSliderStyle() == juce::Slider::LinearBar)
-        layout.textBoxBounds = layout.sliderBounds.withTrimmedTop(13);
+        layout.textBoxBounds = layout.sliderBounds.withTrimmedTop(15);
     return layout;
 }
 

@@ -48,10 +48,16 @@ PresetBrowser::PresetBrowser(juce::File pluginRoot, PresetHandlers handlersIn)
     rebuild();
 }
 
+void PresetBrowser::setListVisible(bool visible) {
+    if (listVisible == visible) return;
+    listVisible = visible;
+    list.setVisible(visible);
+    search.setTextToShowWhenEmpty(visible ? "Search" : "Search / preset name", juce::Colour(0xffb4c8d4));
+    resized();
+}
+
 void PresetBrowser::resized() {
     auto row = getLocalBounds();
-    search.setBounds(row.removeFromLeft(140).reduced(0, 0));
-    row.removeFromLeft(4);
     favorite.setBounds(row.removeFromRight(44));
     row.removeFromRight(4);
     remove.setBounds(row.removeFromRight(64));
@@ -60,6 +66,12 @@ void PresetBrowser::resized() {
     row.removeFromRight(4);
     save.setBounds(row.removeFromRight(76));
     row.removeFromRight(4);
+    if (!listVisible) {
+        search.setBounds(row);
+        return;
+    }
+    search.setBounds(row.removeFromLeft(140).reduced(0, 0));
+    row.removeFromLeft(4);
     list.setBounds(row);
 }
 
