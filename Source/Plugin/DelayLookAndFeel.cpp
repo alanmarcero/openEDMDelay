@@ -17,7 +17,7 @@ DelayLookAndFeel::DelayLookAndFeel() {
     setColour(juce::TooltipWindow::outlineColourId, theme::kPanelEdge);
     setColour(juce::ResizableWindow::backgroundColourId, theme::kBackground);
     setColour(juce::Label::textColourId, theme::kText);
-    setColour(juce::Slider::textBoxTextColourId, theme::kTextDim);
+    setColour(juce::Slider::textBoxTextColourId, theme::kText);
     setColour(juce::Slider::textBoxOutlineColourId, juce::Colours::transparentBlack);
     setColour(juce::Slider::textBoxBackgroundColourId, juce::Colours::transparentBlack);
     setColour(juce::Slider::textBoxHighlightColourId, theme::kTrack);
@@ -94,7 +94,7 @@ void DelayLookAndFeel::drawLinearSlider(juce::Graphics& g, int x, int y, int wid
         g.drawRoundedRectangle(box, kCornerRadius, 1.0f);
         g.setColour(theme::kTextDim.withMultipliedAlpha(alpha));
         g.setFont(juce::FontOptions(9.0f, juce::Font::bold));
-        g.drawText("STEP", box.withHeight(13.0f).translated(0.0f, 1.0f), juce::Justification::centred);
+        g.drawText("STEP", box.withHeight(12.0f).translated(0.0f, 2.0f), juce::Justification::centred);
         return;
     }
 
@@ -204,6 +204,26 @@ juce::Label* DelayLookAndFeel::createSliderTextBox(juce::Slider& slider) {
     label->setColour(juce::Label::outlineColourId,juce::Colours::transparentBlack);
     label->setColour(juce::Label::backgroundColourId,juce::Colours::transparentBlack);
     return label;
+}
+
+juce::Slider::SliderLayout DelayLookAndFeel::getSliderLayout(juce::Slider& slider) {
+    auto layout = LookAndFeel_V4::getSliderLayout(slider);
+    if (slider.getSliderStyle() == juce::Slider::LinearBar)
+        layout.textBoxBounds = layout.sliderBounds.withTrimmedTop(12);
+    return layout;
+}
+
+void DelayLookAndFeel::fillTextEditorBackground(juce::Graphics& g, int width, int height, juce::TextEditor& editor) {
+    const auto bounds = juce::Rectangle<int>(width, height).toFloat().reduced(0.5f);
+    g.setColour(editor.findColour(juce::TextEditor::backgroundColourId));
+    g.fillRoundedRectangle(bounds, kCornerRadius);
+}
+
+void DelayLookAndFeel::drawTextEditorOutline(juce::Graphics& g, int width, int height, juce::TextEditor& editor) {
+    const auto bounds = juce::Rectangle<int>(width, height).toFloat().reduced(0.5f);
+    const bool focused = editor.hasKeyboardFocus(true) && !editor.isReadOnly();
+    g.setColour(focused ? theme::kAccentA : theme::kPanelEdge);
+    g.drawRoundedRectangle(bounds, kCornerRadius, 1.0f);
 }
 
 } // namespace oed

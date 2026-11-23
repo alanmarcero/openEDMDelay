@@ -24,6 +24,9 @@ public:
     juce::Font getPopupMenuFont() override;
     void getIdealPopupMenuItemSize(const juce::String&, bool, int, int&, int&) override;
     juce::Label* createSliderTextBox(juce::Slider& slider) override;
+    juce::Slider::SliderLayout getSliderLayout(juce::Slider& slider) override;
+    void fillTextEditorBackground(juce::Graphics& g, int width, int height, juce::TextEditor& editor) override;
+    void drawTextEditorOutline(juce::Graphics& g, int width, int height, juce::TextEditor& editor) override;
 };
 
 } // namespace oed

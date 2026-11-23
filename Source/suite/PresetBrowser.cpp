@@ -6,7 +6,7 @@ PresetBrowser::PresetBrowser(juce::File pluginRoot, PresetHandlers handlersIn)
     : presets(std::move(pluginRoot)), handlers(std::move(handlersIn)) {
     search.setComponentID("presetSearch");
     search.setTitle("Search presets");
-    search.setTextToShowWhenEmpty("Search", juce::Colours::grey);
+    search.setTextToShowWhenEmpty("Search", juce::Colour(0xff869ca8));
     search.setTooltip("Find a factory or user preset by name.");
     search.onTextChange = [this] { rebuild(); };
     addAndMakeVisible(search);
@@ -33,7 +33,7 @@ PresetBrowser::PresetBrowser(juce::File pluginRoot, PresetHandlers handlersIn)
 
     rename.setComponentID("presetRename");
     rename.setTitle("Rename preset");
-    rename.setTooltip("Rename the selected user preset. Factory presets stay read-only.");
+    rename.setTooltip("Rename the selected user preset using the search field. Factory presets stay read-only.");
     rename.onClick = [this] { renameSelected(); };
     addAndMakeVisible(rename);
 
@@ -67,6 +67,7 @@ void PresetBrowser::setSearch(const juce::String& text) {
 }
 
 void PresetBrowser::rebuild() {
+    clearConfirmations();
     const juce::ScopedValueSetter<bool> guard(rebuilding, true);
     shown.clear();
     list.clear(juce::dontSendNotification);
@@ -139,7 +140,7 @@ void PresetBrowser::updateActionStates() {
     const auto* row = current();
     favorite.setToggleState(row != nullptr && row->favorite, juce::dontSendNotification);
     const bool userSelected = row != nullptr && !row->factory;
-    rename.setEnabled(userSelected);
+    rename.setEnabled(userSelected && search.getText().trim().isNotEmpty());
     remove.setEnabled(userSelected);
 }
 
@@ -258,6 +259,7 @@ void PresetBrowser::stepPreset(int delta) {
 }
 
 void PresetBrowser::syncSelection(const juce::String& presetName, bool isModified) {
+    clearConfirmations();
     const juce::ScopedValueSetter<bool> guard(rebuilding, true);
     int matchedId = 0;
     for (int i = 0; i < static_cast<int>(shown.size()); ++i) {

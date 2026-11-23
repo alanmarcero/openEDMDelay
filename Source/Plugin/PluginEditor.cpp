@@ -70,6 +70,14 @@ struct LockableControl final : Base {
         }
         Base::mouseDown(e);
     }
+    void mouseDrag(const juce::MouseEvent& e) override {
+        if (e.mods.isPopupMenu()) return;
+        Base::mouseDrag(e);
+    }
+    void mouseUp(const juce::MouseEvent& e) override {
+        if (e.mods.isPopupMenu()) return;
+        Base::mouseUp(e);
+    }
 };
 
 struct ChildPopupForwarder final : juce::MouseListener {
@@ -98,13 +106,21 @@ struct LockableSlider final : juce::Slider {
         }
         juce::Slider::mouseDown(e);
     }
+    void mouseDrag(const juce::MouseEvent& e) override {
+        if (e.mods.isPopupMenu()) return;
+        juce::Slider::mouseDrag(e);
+    }
+    void mouseUp(const juce::MouseEvent& e) override {
+        if (e.mods.isPopupMenu()) return;
+        juce::Slider::mouseUp(e);
+    }
 private:
     std::function<void()> onPopup;
     ChildPopupForwarder forwarder;
 };
 
-void drawPadlock(juce::Graphics& g, juce::Rectangle<float> badge) {
-    g.setColour(theme::kBackground.withAlpha(0.85f));
+void drawPadlock(juce::Graphics& g, juce::Rectangle<float> badge, float alpha) {
+    g.setColour(theme::kBackground.withAlpha(0.85f * alpha));
     g.fillRoundedRectangle(badge.expanded(1.5f, 1.0f), 3.0f);
 
     const float cx = badge.getCentreX();
@@ -121,11 +137,11 @@ void drawPadlock(juce::Graphics& g, juce::Rectangle<float> badge) {
     shackle.lineTo(cx - shackleR, bodyY + 0.8f);
     shackle.startNewSubPath(cx + shackleR, bodyY - 0.5f);
     shackle.lineTo(cx + shackleR, bodyY + 0.8f);
-    g.setColour(theme::kAccentB);
+    g.setColour(theme::kAccentB.withAlpha(alpha));
     g.strokePath(shackle, juce::PathStrokeType(1.4f));
 
     g.fillRoundedRectangle(bodyX, bodyY, bodyW, bodyH, 1.4f);
-    g.setColour(theme::kBackground);
+    g.setColour(theme::kBackground.withAlpha(alpha));
     g.fillEllipse(cx - 0.9f, bodyY + bodyH * 0.5f - 0.9f, 1.8f, 1.8f);
 }
 
@@ -390,10 +406,16 @@ DelayEditor::~DelayEditor() {
 }
 
 void DelayEditor::makeControl(int i) {
+    static constexpr const char* kTapExtraLabels[tapExtraCount]{
+        "Chance", "Ratchets", "Filter", "HP", "LP", "Colour", "Drive", "Target"
+    };
     const auto& spec = parameterSpecs()[static_cast<std::size_t>(i)];
     const auto colour = i >= baseCount ? accent((i - baseCount) / 4) : (i == highPass || i == hpSlope ? theme::kAccentA : theme::kAccentB);
     auto label = std::make_unique<juce::Label>();
-    label->setText(spec.name, juce::dontSendNotification);
+    const juce::String labelText = (i >= tapExtraStart && i < styleParamStart)
+        ? juce::String(kTapExtraLabels[(i - tapExtraStart) % tapExtraCount])
+        : spec.name;
+    label->setText(labelText, juce::dontSendNotification);
     label->setJustificationType(juce::Justification::centred);
     label->setFont(juce::FontOptions(11.5f));
     label->setColour(juce::Label::textColourId, theme::kTextDim);
@@ -515,7 +537,7 @@ void DelayEditor::resized() {
     slotB.setBounds(172, 60, 44, 36);
     copyAB.setBounds(220, 60, 52, 36);
     copyBA.setBounds(276, 60, 52, 36);
-    if (browser) browser->setBounds(336, 60, 544, 36);
+    if (browser) browser->setBounds(336, 60, 844, 36);
 
     pattern.setBounds(645, 106, 195, 36);
     grid.setBounds(39, 149, 801, 218);
@@ -558,14 +580,14 @@ void DelayEditor::resized() {
         place(feedback, {30, 686, 88, 114});
         place(decay, {122, 686, 88, 114});
         place(tempo, {213, 686, 78, 114});
-        place(highPass, {338, 648, 102, 104});
-        place(lowPass, {466, 648, 102, 104});
-        place(hpSlope, {332, 782, 117, 36}, false);
-        place(lpSlope, {460, 782, 117, 36}, false);
+        place(highPass, {338, 642, 102, 98});
+        place(lowPass, {466, 642, 102, 98});
+        place(hpSlope, {332, 784, 117, 36}, false);
+        place(lpSlope, {460, 784, 117, 36}, false);
         place(duckMode, {622, 644, 124, 36}, false);
         place(duckRate, {754, 644, 124, 36}, false);
-        place(duck, {634, 686, 98, 74});
-        place(duckHold, {764, 686, 98, 74});
+        place(duck, {634, 680, 98, 84});
+        place(duckHold, {764, 680, 98, 84});
         scopeFrame.setBounds(622, 786, 256, 36);
     }
 
@@ -610,7 +632,7 @@ void DelayEditor::resized() {
         place(glitchAmount, {464, 654, 88, 112});
         place(glitchRate, {352, 734, 104, 36}, false);
         place(reverse, {574, 654, 96, 112});
-        place(reverseRate, {684, 664, 140, 36});
+        place(reverseRate, {684, 664, 140, 36}, false);
     }
 }
 
@@ -622,9 +644,22 @@ void DelayEditor::mouseDown(const juce::MouseEvent& e) {
     const auto designPoint = (e.position / std::max(0.1f, scale)).toInt();
     if (kMeterPanelArea.contains(designPoint)) {
         meterClipped = false;
-        meterPeakHoldDb = meterDb;
+        meterDb = -60.0f;
+        meterPeakHoldDb = -60.0f;
+        meterPeakHoldTimer = 0.0f;
         content.repaint(kMeterPanelArea);
     }
+}
+
+juce::String DelayEditor::getTooltip() {
+    const float scale = (getWidth() > 0 && getHeight() > 0)
+        ? std::min(static_cast<float>(getWidth()) / static_cast<float>(kDesignWidth),
+                   static_cast<float>(getHeight()) / static_cast<float>(kDesignHeight))
+        : 1.0f;
+    const auto designPoint = (getMouseXYRelative().toFloat() / std::max(0.1f, scale)).toInt();
+    if (kMeterPanelArea.contains(designPoint))
+        return "Output level meter with 1 s peak hold. Click to clear clip latch.";
+    return {};
 }
 
 void DelayEditor::paint(juce::Graphics& g) {
@@ -695,8 +730,8 @@ void DelayEditor::paintContent(juce::Graphics& g) {
 
         panel(g, {315, 600, 280, 230}, "ECHO FILTERS", theme::kAccentB);
         text(g, "IN THE FEEDBACK LOOP", {335, 628, 236, 16}, 10.0f, theme::kTextDim);
-        text(g, "SLOPE", {332, 766, 117, 14}, 10.0f, theme::kTextDim, true, juce::Justification::centred);
-        text(g, "SLOPE", {460, 766, 117, 14}, 10.0f, theme::kTextDim, true, juce::Justification::centred);
+        text(g, "SLOPE", {332, 768, 117, 14}, 10.0f, theme::kTextDim, true, juce::Justification::centred);
+        text(g, "SLOPE", {460, 768, 117, 14}, 10.0f, theme::kTextDim, true, juce::Justification::centred);
 
         panel(g, {610, 600, 280, 230}, "DUCK", theme::kAccentFx);
         const float duckGain = juce::jlimit(1.0e-4f, 1.0f, owner.duckMeter.load());
@@ -739,7 +774,9 @@ void DelayEditor::paintContent(juce::Graphics& g) {
         const float headX = area.getX() + (static_cast<float>(owner.scopePlayhead()) + 0.5f) / DelayProcessor::scopeBinCount * area.getWidth();
         g.setColour(theme::kText.withAlpha(0.7f));
         g.drawVerticalLine(static_cast<int>(headX), area.getY() + 1.0f, area.getBottom() - 1.0f);
-        text(g, "SIDECHAIN", {static_cast<int>(area.getX()) + 6, static_cast<int>(area.getY()) + 1, 78, 12}, 9.0f, theme::kTextDim);
+        const juce::String scopeCaption = (s.duckSource == DuckSource::beat) ? "BEAT DUCK"
+            : (s.duckSource == DuckSource::input ? "INPUT DUCK" : "SIDECHAIN");
+        text(g, scopeCaption, {static_cast<int>(area.getX()) + 6, static_cast<int>(area.getBottom()) - 13, 78, 12}, 9.0f, theme::kTextDim);
     }
     if (lowerPage == 1) {
         panel(g, {20, 600, 290, 230}, "GROOVE & HOLD", theme::kAccentA);
@@ -785,9 +822,15 @@ void DelayEditor::updateControlStates(const Settings& s) {
                          active, activeTip, inactiveTip);
     };
 
-    for (int i = 0; i < tapCount; ++i)
-        set(baseCount + i * 4 + 3, s.routing == Routing::stereo,
-            "Tap balance in Stereo routing.", "Select Stereo routing to enable per-tap pan.");
+    for (int i = 0; i < tapCount; ++i) {
+        const bool tapOn = s.taps[static_cast<std::size_t>(i)].enabled;
+        const juce::String tapOffTip = "Enable Tap " + juce::String(i + 1).paddedLeft('0', 2) + " to use.";
+        set(baseCount + i * 4 + 1, tapOn, "Tap " + juce::String(i + 1) + " grid step.", tapOffTip);
+        set(baseCount + i * 4 + 2, tapOn, "Tap " + juce::String(i + 1) + " level.", tapOffTip);
+        set(baseCount + i * 4 + 3, tapOn && s.routing == Routing::stereo,
+            "Tap balance in Stereo routing.",
+            tapOn ? "Select Stereo routing to enable per-tap pan." : "Enable tap and select Stereo routing to use.");
+    }
 
     set(tempo, !owner.hostSync.load(),
         "Internal tempo is used when the host does not provide a valid BPM.",
@@ -831,12 +874,18 @@ void DelayEditor::updateControlStates(const Settings& s) {
     const int tapIdx = std::clamp(selectedTap.getSelectedId() - 1, 0, tapCount - 1);
     const auto& tap = s.taps[static_cast<std::size_t>(tapIdx)];
     const int tapBase = tapExtraStart + tapIdx * tapExtraCount;
-    set(tapBase + 3, tap.filter, "Per-tap high-pass cutoff.", "Turn on Tap Filter to enable.");
-    set(tapBase + 4, tap.filter, "Per-tap low-pass cutoff.", "Turn on Tap Filter to enable.");
-    set(tapBase + 6, tap.character == 1 || tap.character == 2, "Per-tap saturation drive.",
-        "Select Tape or BBD tap color to enable.");
-    set(tapBase + 7, s.morph > 0.0f, "Target step when Pattern Morph is raised.",
-        "Raise Pattern Morph above 0% to enable.");
+    const bool tapOn = tap.enabled;
+    const juce::String tapOffTip = "Enable Tap " + juce::String(tapIdx + 1).paddedLeft('0', 2) + " to use.";
+    set(tapBase + 0, tapOn, "Per-tap trigger probability.", tapOffTip);
+    set(tapBase + 1, tapOn, "Per-tap ratchet repeats.", tapOffTip);
+    set(tapBase + 2, tapOn, "Enable per-tap high-pass and low-pass filters.", tapOffTip);
+    set(tapBase + 3, tapOn && tap.filter, "Per-tap high-pass cutoff.", tapOn ? "Turn on Tap Filter to enable." : tapOffTip);
+    set(tapBase + 4, tapOn && tap.filter, "Per-tap low-pass cutoff.", tapOn ? "Turn on Tap Filter to enable." : tapOffTip);
+    set(tapBase + 5, tapOn, "Per-tap saturation color.", tapOffTip);
+    set(tapBase + 6, tapOn && (tap.character == 1 || tap.character == 2), "Per-tap saturation drive.",
+        tapOn ? "Select Tape or BBD tap color to enable." : tapOffTip);
+    set(tapBase + 7, tapOn && s.morph > 0.0f, "Target step when Pattern Morph is raised.",
+        tapOn ? "Raise Pattern Morph above 0% to enable." : tapOffTip);
 }
 
 void DelayEditor::syncPresetDisplay() {
@@ -896,10 +945,12 @@ void DelayEditor::paintLockIndicators(juce::Graphics& g) {
         } else if (auto* s = dynamic_cast<juce::Slider*>(control)) {
             if (s->getSliderStyle() == juce::Slider::LinearHorizontal &&
                 s->getTextBoxPosition() == juce::Slider::TextBoxRight) {
-                badge = {r.getX() + 2.0f, r.getY() + 1.0f, 11.0f, 12.0f};
+                badge = {r.getRight() - static_cast<float>(s->getTextBoxWidth()) - 13.0f, r.getY() + 1.0f, 11.0f, 12.0f};
+            } else if (s->getSliderStyle() == juce::Slider::LinearBar) {
+                badge = {r.getRight() - 15.0f, r.getY() + 4.0f, 11.0f, 12.0f};
             }
         }
-        drawPadlock(g, badge);
+        drawPadlock(g, badge, control->getAlpha());
     }
 }
 

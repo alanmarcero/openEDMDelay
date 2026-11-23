@@ -16,7 +16,7 @@ private:
     int dragging=-1;
     float startLevel=0;
 };
-class DelayEditor final:public juce::AudioProcessorEditor,private juce::Timer {
+class DelayEditor final:public juce::AudioProcessorEditor,public juce::TooltipClient,private juce::Timer {
 public:
     explicit DelayEditor(DelayProcessor&);
     ~DelayEditor() override;
@@ -24,6 +24,7 @@ public:
     void resized() override;
     void mouseDown(const juce::MouseEvent&) override;
     bool keyPressed(const juce::KeyPress&) override;
+    juce::String getTooltip() override;
 private:
     void timerCallback() override;
     void paintContent(juce::Graphics&);
