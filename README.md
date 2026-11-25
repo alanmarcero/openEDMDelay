@@ -65,4 +65,4 @@ The plugin supports mono and stereo audio. Rescan your DAW after installing. Set
 
 ## License
 
-openEDMDelay is released under the MIT license. See [LICENSE](LICENSE). Third-party notices, including JUCE's own licence, are in [THIRD_PARTY.md](THIRD_PARTY.md).
+openEDMDelay is released under AGPL-3.0. See [LICENSE](LICENSE). Third-party notices, including JUCE's own licence, are in [THIRD_PARTY.md](THIRD_PARTY.md).
