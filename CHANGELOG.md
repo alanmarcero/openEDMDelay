@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.8.3
+
+- Polishes editor controls, lock overlays, preset browsing, and suite layout.
+- Aligns the JUCE 8 license and hardens CI.
+
 ## v1.8.2
 
 - **Parameter Locking:** Add per-parameter locking across every plugin parameter, persisted in session state and preserved across preset loads and randomization.
