@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.8.4
+
+- Clamps sample rates to `[8000, 384000]` Hz in `DelayEngine::prepare` and `DelayProcessor::prepareToPlay`.
+
 ## v1.8.3
 
 - Polishes editor controls, lock overlays, preset browsing, and suite layout.
