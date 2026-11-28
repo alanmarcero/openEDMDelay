@@ -38,7 +38,7 @@ DelayProcessor::DelayProcessor():AudioProcessor(BusesProperties().withInput("Inp
     ab.restore=[this](const juce::MemoryBlock& block){restoreParameters(block.getData(),static_cast<int>(block.getSize()));};
     ab.seed();
 }
-void DelayProcessor::prepareToPlay(double sr,int){engine.prepare(sr);currentSampleRate=sr;internalPhase=0;wasBypassed=false;}
+void DelayProcessor::prepareToPlay(double sr,int){const double clamped=std::clamp(std::isfinite(sr)?sr:48000.0,8000.0,384000.0);engine.prepare(clamped);currentSampleRate=clamped;internalPhase=0;wasBypassed=false;}
 void DelayProcessor::reset(){engine.reset();internalPhase=0;}
 bool DelayProcessor::isBusesLayoutSupported(const BusesLayout& l)const {
     if(l.inputBuses.size()!=2||l.outputBuses.size()!=1) return false;

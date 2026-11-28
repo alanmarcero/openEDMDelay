@@ -106,7 +106,7 @@ float DelayEngine::Filter::tick(float x) {
     return static_cast<float>(y);
 }
 void DelayEngine::prepare(double sr) {
-    sampleRate=std::isfinite(sr)&&sr>=8000?sr:48000;
+    sampleRate = std::clamp(std::isfinite(sr) ? sr : 48000.0, 8000.0, 384000.0);
     // Bound readHermite() timing offsets to the allocated history length.
     for(auto& buffer:ring)buffer.assign(static_cast<std::size_t>(sampleRate*96.1)+16,0);
     for(auto& buffer:revRing)buffer.assign(static_cast<std::size_t>(sampleRate*24.1)+16,0);
